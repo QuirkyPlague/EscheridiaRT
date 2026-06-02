@@ -1,0 +1,117 @@
+{
+  "compiler": {
+    "type": "dxc",
+    "options": ["-enable-16bit-types", "-DDXR_1_1"]
+  },
+  "macro_overwrite": {},
+  "file_overwrite": {
+    "passes": {
+      "AccumulateGIInscatter": {
+        "compute": "shaders/AccumulateGIInscatter.hlsl"
+      },
+      "AccumulateInscatter": { "compute": "shaders/AccumulateInscatter.hlsl" },
+      "AdaptiveDenoiserCalculateGradientsInline": {
+        "compute": "shaders/AdaptiveDenoiserCalculateGradientsInline.hlsl"
+      },
+      "AdaptiveDenoiserGenerateReferenceInline": {
+        "compute": "shaders/AdaptiveDenoiserGenerateReferenceInline.hlsl"
+      },
+      "Atrous": { "compute": "shaders/Atrous.hlsl" },
+      "AtrousSH": { "compute": "shaders/AtrousSH.hlsl" },
+      "BlendCheckerboardFields": {
+        "compute": "shaders/BlendCheckerboardFields.hlsl"
+      },
+      "BlendCheckerboardFieldsSH": {
+        "compute": "shaders/BlendCheckerboardFieldsSH.hlsl"
+      },
+      "BlendCheckerboardFieldsShadow": {
+        "compute": "shaders/BlendCheckerboardFieldsShadow.hlsl"
+      },
+      "BlurGIInscatter": { "compute": "shaders/BlurGIInscatter.hlsl" },
+      "BlurGradients": { "compute": "shaders/BlurGradients.hlsl" },
+      "CalculateFaceData": { "compute": "shaders/CalculateFaceData.hlsl" },
+      "CalculateGIInscatterInline": {
+        "compute": "shaders/CalculateGIInscatterInline.hlsl"
+      },
+      "CalculateInscatterInline": {
+        "compute": "shaders/CalculateInscatterInline.hlsl"
+      },
+      "CheckerboardInterleave": {
+        "compute": "shaders/CheckerboardInterleave.hlsl"
+      },
+      "CheckerboardUpscale": { "compute": "shaders/CheckerboardUpscale.hlsl" },
+      "CheckerboardUpscaleSH": {
+        "compute": "shaders/CheckerboardUpscaleSH.hlsl"
+      },
+      "ClearFaceIrradianceCache": {
+        "compute": "shaders/ClearFaceIrradianceCache.hlsl"
+      },
+      "ClearVertexIrradianceCache": {
+        "compute": "shaders/ClearVertexIrradianceCache.hlsl"
+      },
+      "CopyToFinal": { "compute": "shaders/CopyToFinal.hlsl" },
+      "DiffuseFireflyFilter": {
+        "compute": "shaders/DiffuseFireflyFilter.hlsl"
+      },
+      "DiffuseFireflyFilterSH": {
+        "compute": "shaders/DiffuseFireflyFilterSH.hlsl"
+      },
+      "DiffuseRayGenCombinedInline": {
+        "compute": "shaders/DiffuseRayGenCombinedInline.hlsl"
+      },
+      "DrawLights": { "compute": "shaders/DrawLights.hlsl" },
+      "ExplicitLightSamplingInline": {
+        "compute": "shaders/ExplicitLightSamplingInline.hlsl"
+      },
+      "FilterMoments": { "compute": "shaders/FilterMoments.hlsl" },
+      "FilterMomentsSH": { "compute": "shaders/FilterMomentsSH.hlsl" },
+      "FinalCombine": { "compute": "shaders/FinalCombine.hlsl" },
+      "FinalizeDenoising": { "compute": "shaders/FinalizeDenoising.hlsl" },
+      "IncidentLightMeterInline": {
+        "compute": "shaders/IncidentLightMeterInline.hlsl"
+      },
+      "PathTracingRayGenInline": {
+        "compute": "shaders/PathTracingRayGenInline.hlsl"
+      },
+      "PreBlasSkinning": { "compute": "shaders/PreBlasSkinning.hlsl" },
+      "PrimaryCheckerboardRayGenInline": {
+        "compute": "shaders/PrimaryCheckerboardRayGenInline.hlsl"
+      },
+      "RefractionRayGenInline": {
+        "compute": "shaders/RefractionRayGenInline.hlsl"
+      },
+      "Reproject": { "compute": "shaders/Reproject.hlsl" },
+      "ReprojectSH": { "compute": "shaders/ReprojectSH.hlsl" },
+      "ReprojectSpecularOnly": {
+        "compute": "shaders/ReprojectSpecularOnly.hlsl"
+      },
+      "ResolveLightMeasurement": {
+        "compute": "shaders/ResolveLightMeasurement.hlsl"
+      },
+      "ShadowDenoising": { "compute": "shaders/ShadowDenoising.hlsl" },
+      "SpecularFireflyFilter": {
+        "compute": "shaders/SpecularFireflyFilter.hlsl"
+      },
+      "SpecularRayGenInline": {
+        "compute": "shaders/SpecularRayGenInline.hlsl"
+      },
+      "SunShadowRayGenInline": {
+        "compute": "shaders/SunShadowRayGenInline.hlsl"
+      },
+      "TAA": { "compute": "shaders/TAA.hlsl" },
+      "TemporalDenoising": { "compute": "shaders/TemporalDenoising.hlsl" },
+      "TileClassification": { "compute": "shaders/TileClassification.hlsl" },
+      "ToneCurve": { "compute": "shaders/ToneCurve.hlsl" },
+      "ToneMappingHistogram": {
+        "compute": "shaders/ToneMappingHistogram.hlsl"
+      },
+      "UpdateFaceIrradianceCacheInline": {
+        "compute": "shaders/UpdateFaceIrradianceCacheInline.hlsl"
+      },
+      "UpdateVertexIrradianceCacheInline": {
+        "compute": "shaders/UpdateVertexIrradianceCacheInline.hlsl"
+      },
+      "WFTest": { "compute": "shaders/WFTest.hlsl" }
+    }
+  }
+}

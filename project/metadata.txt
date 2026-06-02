@@ -1,0 +1,238 @@
+This file contains additional generated data.
+
+List of all template keys:
+RTXPostFX.Bloom.buffers
+RTXPostFX.Bloom.passes
+RTXPostFX.Bloom.uniforms
+RTXPostFX.ToneMapping.buffers
+RTXPostFX.ToneMapping.passes
+RTXPostFX.ToneMapping.uniforms
+RTXStub.CBV
+RTXStub.SRV
+RTXStub.UAV
+RTXStub.buffers.b0_space0
+RTXStub.buffers.b0_space99
+RTXStub.buffers.b2_space0
+RTXStub.buffers.b3_space0
+RTXStub.buffers.s0_space0
+RTXStub.buffers.s1_space0
+RTXStub.buffers.s2_space0
+RTXStub.buffers.t0_space0
+RTXStub.buffers.t0_space13
+RTXStub.buffers.t0_space2
+RTXStub.buffers.t0_space4
+RTXStub.buffers.t0_space6
+RTXStub.buffers.t11_space0
+RTXStub.buffers.t12_space0
+RTXStub.buffers.t13_space0
+RTXStub.buffers.t14_space0
+RTXStub.buffers.t15_space0
+RTXStub.buffers.t16_space0
+RTXStub.buffers.t17_space0
+RTXStub.buffers.t18_space0
+RTXStub.buffers.t19_space0
+RTXStub.buffers.t1_space0
+RTXStub.buffers.t1_space13
+RTXStub.buffers.t1_space9
+RTXStub.buffers.t21_space0
+RTXStub.buffers.t22_space0
+RTXStub.buffers.t23_space0
+RTXStub.buffers.t24_space0
+RTXStub.buffers.t25_space0
+RTXStub.buffers.t26_space0
+RTXStub.buffers.t27_space0
+RTXStub.buffers.t29_space0
+RTXStub.buffers.t2_space0
+RTXStub.buffers.t2_space13
+RTXStub.buffers.t30_space0
+RTXStub.buffers.t35_space0
+RTXStub.buffers.t38_space0
+RTXStub.buffers.t39_space0
+RTXStub.buffers.t3_space0
+RTXStub.buffers.t3_space9
+RTXStub.buffers.t40_space0
+RTXStub.buffers.t41_space0
+RTXStub.buffers.t42_space0
+RTXStub.buffers.t43_space0
+RTXStub.buffers.t44_space0
+RTXStub.buffers.t45_space0
+RTXStub.buffers.t46_space0
+RTXStub.buffers.t47_space0
+RTXStub.buffers.t48_space0
+RTXStub.buffers.t49_space0
+RTXStub.buffers.t4_space0
+RTXStub.buffers.t50_space0
+RTXStub.buffers.t51_space0
+RTXStub.buffers.t53_space0
+RTXStub.buffers.t54_space0
+RTXStub.buffers.t55_space0
+RTXStub.buffers.t56_space0
+RTXStub.buffers.t57_space0
+RTXStub.buffers.t58_space0
+RTXStub.buffers.t59_space0
+RTXStub.buffers.t5_space0
+RTXStub.buffers.t60_space0
+RTXStub.buffers.t61_space0
+RTXStub.buffers.t62_space0
+RTXStub.buffers.t63_space0
+RTXStub.buffers.t6_space0
+RTXStub.buffers.t7_space0
+RTXStub.buffers.t8_space0
+RTXStub.buffers.u0_space0
+RTXStub.buffers.u0_space1
+RTXStub.buffers.u0_space10
+RTXStub.buffers.u0_space11
+RTXStub.buffers.u0_space14
+RTXStub.buffers.u0_space2
+RTXStub.buffers.u0_space3
+RTXStub.buffers.u0_space4
+RTXStub.buffers.u0_space9
+RTXStub.buffers.u10_space0
+RTXStub.buffers.u11_space0
+RTXStub.buffers.u12_space0
+RTXStub.buffers.u14_space0
+RTXStub.buffers.u15_space0
+RTXStub.buffers.u16_space0
+RTXStub.buffers.u17_space0
+RTXStub.buffers.u18_space0
+RTXStub.buffers.u19_space0
+RTXStub.buffers.u1_space0
+RTXStub.buffers.u20_space0
+RTXStub.buffers.u21_space0
+RTXStub.buffers.u22_space0
+RTXStub.buffers.u23_space0
+RTXStub.buffers.u26_space0
+RTXStub.buffers.u27_space0
+RTXStub.buffers.u28_space0
+RTXStub.buffers.u29_space0
+RTXStub.buffers.u2_space0
+RTXStub.buffers.u30_space0
+RTXStub.buffers.u31_space0
+RTXStub.buffers.u32_space0
+RTXStub.buffers.u33_space0
+RTXStub.buffers.u34_space0
+RTXStub.buffers.u35_space0
+RTXStub.buffers.u36_space0
+RTXStub.buffers.u38_space0
+RTXStub.buffers.u39_space0
+RTXStub.buffers.u3_space0
+RTXStub.buffers.u40_space0
+RTXStub.buffers.u42_space0
+RTXStub.buffers.u44_space0
+RTXStub.buffers.u45_space0
+RTXStub.buffers.u4_space0
+RTXStub.buffers.u5_space0
+RTXStub.buffers.u60_space0
+RTXStub.buffers.u61_space0
+RTXStub.buffers.u62_space0
+RTXStub.buffers.u63_space0
+RTXStub.buffers.u64_space0
+RTXStub.buffers.u6_space0
+RTXStub.buffers.u7_space0
+RTXStub.buffers.u8_space3
+RTXStub.passes.AccumulateGIInscatter.group_size
+RTXStub.passes.AccumulateInscatter.group_size
+RTXStub.passes.AdaptiveDenoiserCalculateGradientsInline.group_size
+RTXStub.passes.AdaptiveDenoiserGenerateReferenceInline.group_size
+RTXStub.passes.Atrous.group_size
+RTXStub.passes.AtrousSH.group_size
+RTXStub.passes.BlendCheckerboardFields.group_size
+RTXStub.passes.BlendCheckerboardFieldsSH.group_size
+RTXStub.passes.BlendCheckerboardFieldsShadow.group_size
+RTXStub.passes.BlurGIInscatter.group_size
+RTXStub.passes.BlurGradients.group_size
+RTXStub.passes.CalculateFaceData.group_size
+RTXStub.passes.CalculateGIInscatterInline.group_size
+RTXStub.passes.CalculateInscatterInline.group_size
+RTXStub.passes.CheckerboardInterleave.group_size
+RTXStub.passes.CheckerboardUpscale.group_size
+RTXStub.passes.CheckerboardUpscaleSH.group_size
+RTXStub.passes.ClearFaceIrradianceCache.group_size
+RTXStub.passes.ClearVertexIrradianceCache.group_size
+RTXStub.passes.CopyToFinal.group_size
+RTXStub.passes.DiffuseFireflyFilter.group_size
+RTXStub.passes.DiffuseFireflyFilterSH.group_size
+RTXStub.passes.DiffuseRayGenCombinedInline.group_size
+RTXStub.passes.DrawLights.group_size
+RTXStub.passes.ExplicitLightSamplingInline.group_size
+RTXStub.passes.FilterMoments.group_size
+RTXStub.passes.FilterMomentsSH.group_size
+RTXStub.passes.FinalCombine.group_size
+RTXStub.passes.FinalizeDenoising.group_size
+RTXStub.passes.IncidentLightMeterInline.group_size
+RTXStub.passes.PathTracingRayGenInline.group_size
+RTXStub.passes.PreBlasSkinning.group_size
+RTXStub.passes.PrimaryCheckerboardRayGenInline.group_size
+RTXStub.passes.RefractionRayGenInline.group_size
+RTXStub.passes.Reproject.group_size
+RTXStub.passes.ReprojectSH.group_size
+RTXStub.passes.ReprojectSpecularOnly.group_size
+RTXStub.passes.ResolveLightMeasurement.group_size
+RTXStub.passes.ShadowDenoising.group_size
+RTXStub.passes.SpecularFireflyFilter.group_size
+RTXStub.passes.SpecularRayGenInline.group_size
+RTXStub.passes.SunShadowRayGenInline.group_size
+RTXStub.passes.TAA.group_size
+RTXStub.passes.TemporalDenoising.group_size
+RTXStub.passes.TileClassification.group_size
+RTXStub.passes.ToneCurve.group_size
+RTXStub.passes.ToneMappingHistogram.group_size
+RTXStub.passes.UpdateFaceIrradianceCacheInline.group_size
+RTXStub.passes.UpdateVertexIrradianceCacheInline.group_size
+RTXStub.passes.WFTest.group_size
+RTXStub.passes_and_group_size
+RTXStub.samplers
+RTXStub.structs
+
+
+List of all compute passes and their group size:
+AccumulateGIInscatter (16, 16, 1)
+AccumulateInscatter (16, 16, 1)
+AdaptiveDenoiserCalculateGradientsInline (4, 8, 1)
+AdaptiveDenoiserGenerateReferenceInline (4, 8, 1)
+Atrous (16, 8, 1)
+AtrousSH (16, 8, 1)
+BlendCheckerboardFields (16, 16, 1)
+BlendCheckerboardFieldsSH (16, 16, 1)
+BlendCheckerboardFieldsShadow (16, 16, 1)
+BlurGIInscatter (16, 16, 1)
+BlurGradients (128, 1, 1)
+CalculateFaceData (128, 1, 1)
+CalculateGIInscatterInline (4, 4, 2)
+CalculateInscatterInline (4, 4, 2)
+CheckerboardInterleave (16, 16, 1)
+CheckerboardUpscale (16, 16, 1)
+CheckerboardUpscaleSH (16, 16, 1)
+ClearFaceIrradianceCache (128, 1, 1)
+ClearVertexIrradianceCache (128, 1, 1)
+CopyToFinal (16, 16, 1)
+DiffuseFireflyFilter (16, 16, 1)
+DiffuseFireflyFilterSH (16, 16, 1)
+DiffuseRayGenCombinedInline (4, 8, 1)
+DrawLights (16, 16, 1)
+ExplicitLightSamplingInline (4, 8, 1)
+FilterMoments (16, 16, 1)
+FilterMomentsSH (16, 16, 1)
+FinalCombine (16, 16, 1)
+FinalizeDenoising (16, 16, 1)
+IncidentLightMeterInline (4, 4, 2)
+PathTracingRayGenInline (4, 8, 1)
+PreBlasSkinning (64, 1, 1)
+PrimaryCheckerboardRayGenInline (4, 8, 1)
+RefractionRayGenInline (4, 8, 1)
+Reproject (16, 16, 1)
+ReprojectSH (16, 16, 1)
+ReprojectSpecularOnly (16, 16, 1)
+ResolveLightMeasurement (1, 1, 1)
+ShadowDenoising (16, 16, 1)
+SpecularFireflyFilter (16, 16, 1)
+SpecularRayGenInline (4, 8, 1)
+SunShadowRayGenInline (4, 8, 1)
+TAA (16, 16, 1)
+TemporalDenoising (16, 16, 1)
+TileClassification (16, 16, 1)
+ToneCurve (256, 1, 1)
+ToneMappingHistogram (16, 16, 1)
+UpdateFaceIrradianceCacheInline (32, 1, 1)
+UpdateVertexIrradianceCacheInline (32, 1, 1)
+WFTest (16, 16, 1)
