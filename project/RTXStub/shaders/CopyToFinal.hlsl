@@ -42,7 +42,7 @@ void CopyToFinal(
     if (isUpscalingEnabled()) {
         // Pick up upscaled results from inputThisFrameTAAHistory
         float4 upscaledColor = inputThisFrameTAAHistory[dispatchThreadID.xy];
-        upscaledColor.xyz = reinhard_extended(upscaledColor.xyz, 11.2);
+        upscaledColor.xyz = TonemapACES(upscaledColor.xyz);
         upscaledColor.xyz = pow(upscaledColor.xyz, 1.0/2.2); // Gamma correction.
         outputBufferFinal[dispatchThreadID.xy] = upscaledColor;
     } 

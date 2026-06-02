@@ -30,6 +30,7 @@
 #include "shadows.hlsl"
 #include "sky.hlsl"
 #include "settings.hlsl"
+#include "water.hlsl"
 
 
 static const uint kBlueNoiseLayerMask = kBlueNoiseLayerCount - 1;
@@ -255,48 +256,6 @@ void RenderVanilla(HitInfo hitInfo, inout RayState rayState)
 }
 
 
-
-
-float3 skyScattering(float3 pos)
-{
-    
-    float3 dir = pos;
-
-	float3 sunDir = getTrueDirectionToSun();
-
-    float VoL = dot(dir, sunDir);
-
-    float upPos = saturate(dir.y);
-    float downPos = clamp(dir.y, -1.0, 0.0);
-    float negatedDownPos = -1.0 * downPos;
-    float midPos = upPos + negatedDownPos;
-    float negatedMidPos = 1.0 - midPos;
-
-    float3 zenithCol = float3(0.6, 0.7, 1.0);
-    float3 horizonCol = float3(1.0, 0.9, 0.6);
-    float3 groundCol = float3(0.5, 0.5, 0.5);
-
-	
-
-    float zenithBlend = saturate(pow(upPos, 0.55));
-    float horizonBlend = saturate(pow(negatedMidPos, 5.5));
-    float groundBlend = saturate(pow(negatedDownPos, 0.55));
-
-	
-    zenithCol *=  zenithBlend;
-    horizonCol *=  horizonBlend;
-    groundCol *=  groundBlend;
-
-    float3 sky = zenithCol + horizonCol + groundCol;
-	
-
-	float3 color = sky;
-	float skyLuminance = dot(color, 1.0);
-	color = pow(color, 1.5);
-	color *= skyLuminance / dot(color, 1.0);
-    return color;
-}
-
 void skyCol(inout RayState rayState)
 {
     if (all(rayState.throughput == 0)) return;
@@ -334,7 +293,7 @@ float3 computeSkylight(float3 n)
         
         if(i >= 8) contribution *= 0.0055;  // downward samples (ground bounce) are weaker
         
-        result += skyScattering1(normalize(skyDirs[i])) * contribution;
+        result += skyCompute(normalize(skyDirs[i])) * contribution;
         totalWeight += contribution;
         
         // Accumulate bent normal from unoccluded samples
@@ -395,6 +354,8 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, obj);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, obj);
             surfaceInfo.color = pow(surfaceInfo.color, 2.2);
+            float3 emissive = float3(0.0,0.0,0.0);
+    
             float3 sunDir = getTrueDirectionToSun();
             float3 moonDir = -sunDir;
 
@@ -403,7 +364,7 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
 
             float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
             float4 sunlightColor =  getSunColor(float4(0.0, 0.0, 0.0, 0.0) ) * SUN_INTENSITY;
-            ;
+            
             float sunIntensity = sunlightColor.a;
             sunlightColor.rgb *= luminance(sunlightColor.rgb * sunIntensity);
             float3 NdotL = saturate(dot(surfaceInfo.normal, mainLightDir));
@@ -414,13 +375,31 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
             float4 blueNoise = GetBlueNoiseValue(pixelCoord);
 
             getShadow(surfaceInfo, mainLightDir, blueNoise.xy, sunShadow);
-        
+            //Special water handling
+            if(hitInfo.materialType == MATERIAL_TYPE_WATER)
+            {
+                surfaceInfo.roughness = 0.1;
+                const float waveSmoothness = WAVE_SMOOTHING;
+	            const float waveStrength = WAVE_INTENSITY;
+	             float3 worldPos = surfaceInfo.position - g_view.waveWorksOriginInSteveSpace;
+                worldPos = worldPos - floor(worldPos / 1024) * 1024; // Bedrock may reset position every 1024 blocks, so we can only reliably calculate world position within 1024 blocks chunk.
+	
+	            
+
+                float3 waveNorm = surfaceInfo.normal;
+	       
+		        waveNorm = waveNormal(worldPos.xz, waveSmoothness, waveStrength );
+                surfaceInfo.normal = waveNorm;
+	          
+	        }
+                
+            
 
          
             
             float3 reflection = skyReflection(rayState.rayDesc.Direction, surfaceInfo.normal, surfaceInfo, blueNoise.xyz);
             
-            lighting = BRDF(surfaceInfo.normal, -rayState.rayDesc.Direction, mainLightDir, sunlightColor.rgb, skylight, surfaceInfo, sunShadow) + reflection;
+            lighting = BRDF(surfaceInfo.normal, -rayState.rayDesc.Direction, mainLightDir, sunlightColor.rgb, skylight, reflection, surfaceInfo, sunShadow);
              // Calculate point lights.
     for (int i = 0; i < min(80, g_view.cpuLightsCount); i++)
     {
@@ -449,7 +428,7 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
              {
                  // Use alphablend for everything else
                  throughput = 1 - surfaceInfo.alpha;
-                 emission = surfaceInfo.color * surfaceInfo.alpha * lighting;
+                 emission = surfaceInfo.alpha * lighting;
              }
 
             // Glint

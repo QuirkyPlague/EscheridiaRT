@@ -55,6 +55,117 @@ return sunColor;
 }
 
 
+float3 skyCompute(float3 pos)
+{
+    
+    float3 dir = pos;
+
+	float3 sunDir = getTrueDirectionToSun();
+
+    float VoL = dot(dir, sunDir);
+
+    float upPos = saturate(dir.y);
+    float downPos = clamp(dir.y, -1.0, 0.0);
+    float negatedDownPos = -1.0 * downPos;
+    float midPos = upPos + negatedDownPos;
+    float negatedMidPos = 1.0 - midPos;
+	//rain
+	const float3 rainZenCol = float3(0.2902, 0.3608, 0.4784) * 0.25;
+	const float3 rainHorCol = float3(0.7059, 0.7569, 0.7961) * 0.25;
+	const float3 rainGrndCol = float3(0.1569, 0.1922, 0.2314) * 0.25;
+
+    const int keys = 10;
+
+    const float3 colors[7] =
+	{
+		NOON_SKY_COL,
+        DAY_SKY_COL,
+        DAY_SKY_COL,
+        SUNRISE_SKY_COL,
+        SUNSET_SKY_COL * 0.06,
+        SUNSET_SKY_COL * 0.025,
+        NIGHT_SKY_COL * NIGHT_INTENSITY
+	};
+	const float times[7] =
+	{
+		0.0000000000, // 6000
+		0.1920399368, // 3000
+		0.3466664553, // 1000
+		0.4309642911, // 0
+		0.4746705294, // 23500
+		0.5193186402, // 23000
+		0.5621
+	};
+
+   
+    const float3 horizonColors[7] = {
+      	NOON_HORIZON_COL,
+        DAY_HORIZON_COL * 1.4,
+        DAY_HORIZON_COL * 1.4,
+        SUNRISE_HORIZON_COL * 1.15,
+        SUNSET_HORIZON_COL * 0.1,
+        SUNSET_HORIZON_COL * 0.025,
+        NIGHT_HORIZON_COL * NIGHT_INTENSITY
+    };
+    const float3 groundColors[7] = {
+        NOON_GROUND_COL,
+        DAY_GROUND_COL,
+        DAY_GROUND_COL,
+        SUNRISE_GROUND_COL,
+        SUNSET_GROUND_COL * 0.1,
+        SUNSET_GROUND_COL * 0.01,
+        NIGHT_GROUND_COL * NIGHT_INTENSITY
+    };
+
+
+
+	float time = getTime();
+
+	float timediff = clamp(abs(g_view.skyTextureW - 0.51952102785), 0, 0.00879302615);
+    timediff *= 1.0 / 0.00879302615;
+    float3 zenithCol = NIGHT_SKY_COL * NIGHT_INTENSITY;
+    float3 horizonCol = NIGHT_HORIZON_COL * NIGHT_INTENSITY;
+    float3 groundCol = NIGHT_GROUND_COL * NIGHT_INTENSITY;
+    float mieScale = 0.0;
+    float3 mieScat = float3(0.0,0.0,0.0);
+    float dawnDuskMieFactor = 0.0;
+    float dawnDuskTimeFactor = 0.0;
+	float rainIntensityShift = 0.01;
+		
+	[unroll] for (int i = 1; i < 7; i++)
+	{
+		if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i])
+		{
+			float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
+			
+			zenithCol = lerp(colors[i - 1], colors[i], w);
+			horizonCol = lerp(horizonColors[i - 1], horizonColors[i], w);
+			groundCol = lerp(groundColors[i - 1], groundColors[i], w);
+			
+			break;
+		}
+	}
+
+	
+
+    float zenithBlend = saturate(pow(upPos, ZENITH_BLEND));
+    float horizonBlend = saturate(pow(negatedMidPos, HORIZON_BLEND));
+    float groundBlend = saturate(pow(negatedDownPos, GROUND_BLEND));
+
+    zenithCol *=  zenithBlend;
+    horizonCol *=  horizonBlend;
+    groundCol *= groundBlend;
+
+    float3 sky = zenithCol + horizonCol + groundCol;
+	
+
+	float3 color = sky;
+	float skyLuminance = dot(color, 1.0);
+	color = pow(color, 1.5);
+	color *= skyLuminance / dot(color, 1.0);
+    return color;
+}
+
 float3 skyScattering1(float3 pos)
 {
     

@@ -50,7 +50,7 @@ void TraceShadowRay(in RayDesc ray, out ShadowPayload payload)
         if (isCloud)
         {
             // Simple cloud shadow approximation
-            transmission *= 0.7;
+            transmission *= saturate(1.0 - CLOUD_SHADOW_OPACITY);
             continue;
         };
 

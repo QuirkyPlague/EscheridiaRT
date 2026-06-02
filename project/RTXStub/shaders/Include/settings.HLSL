@@ -5,30 +5,31 @@
 
 // Lighting Parameters
 #define SUN_RADIUS   0.015
-#define SUN_INTENSITY 3.5
+#define SUN_INTENSITY 2.15
 #define SKYLIGHT_MULTIPLIER 0.65
+#define CLOUD_SHADOW_OPACITY 0.586
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7625,0.545, 1.0)
-#define NOON_SUN_COLOR float4(1.0,0.95,0.85, 1.0)
+#define DAY_SUN_COLOR float4(1.0,0.7625,0.545, 0.85)
+#define NOON_SUN_COLOR float4(1.0,0.95,0.85, 0.75)
 #define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 0.61)
-#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.1)
+#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.4)
 
 //sky intensity multipliers
 
-#define RAYLEIGH_MULT                  1.0 //brightness of the sky
-#define NIGHT_INTENSITY                0.071 //brightness of the night sky
+#define RAYLEIGH_MULT                  1.6 //brightness of the sky
+#define NIGHT_INTENSITY                0.11 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
 //sky zenith colors
-#define DAY_SKY_COL                    float3(0.135, 0.512, 1.0)
-#define NOON_SKY_COL                   float3(0.135, 0.512, 1.0)
+#define DAY_SKY_COL                    float3(0.315, 0.612, 1.0)
+#define NOON_SKY_COL                   float3(0.315, 0.612, 1.0)
 #define SUNRISE_SKY_COL                float3(0.3592, 0.6353, 1.0)
 #define SUNSET_SKY_COL                 float3(0.2322, 0.4529, 0.8265)
 #define NIGHT_SKY_COL                  float3(0.035, 0.0745, 0.2724)
 
 //sky horizon colors
-#define DAY_HORIZON_COL                float3(0.7453, 0.9176, 1.0)
+#define DAY_HORIZON_COL                float3(0.8353, 0.9176, 1.0)
 #define NOON_HORIZON_COL               float3(0.8353, 0.9176, 1.0)
 #define SUNRISE_HORIZON_COL            float3(0.9827, 0.5302, 0.3941)
 #define SUNSET_HORIZON_COL             float3(0.8784, 0.3451, 0.1359)
@@ -54,5 +55,18 @@
 #define ZENITH_BLEND                    0.5              
 #define HORIZON_BLEND                   5.5  
 #define GROUND_BLEND                    0.55
+
+
+//Water
+#define WAVE_SMOOTHING                                      (0.2313)
+#define WAVE_INTENSITY                                      (0.0752)
+#define WAVE_FREQUENCY                                      (2.1)
+#define WAVE_OCTAVES                                        (14)
+#define WAVE_SPEED                                          (3.0)
+#define WAVE_RANDOMNESS                                     (0.45)
+#define WAVE_OCTAVE_FREQUENCY                               (1.21)
+#define WAVE_OCTAVE_SPEED                                   (1.14)
+#define WAVE_OCTAVE_MIX_WEIGHT                              (0.332)
+#define WAVE_PULL                                           (-0.34235)
 
 #endif // SETTINGS_HLSL
