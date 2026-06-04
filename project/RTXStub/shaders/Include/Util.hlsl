@@ -168,6 +168,24 @@ float getTime() {
     return time < 0 ? time + 1 : time;
 }
 
+float3 CosineHemisphereSampling(float2 Xi, float3 N)
+{
+    float r = sqrt(Xi.x) * 1.36;
+    float theta = 2.0 * PI * Xi.y;
+
+    float3 T = normalize(cross(
+        abs(N.z) < 0.999 ?
+        float3(0,0,1) :
+        float3(1,0,0),
+        N));
+
+    float3 B = cross(N, T);
+
+    return normalize(
+        r * cos(theta) * T +
+        r * sin(theta) * B +
+        sqrt(1.0 - Xi.x) * N);
+}
 
 
 #endif

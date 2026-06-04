@@ -31,6 +31,7 @@
 #include "sky.hlsl"
 #include "settings.hlsl"
 #include "water.hlsl"
+#include "GI.hlsl"
 
 
 static const uint kBlueNoiseLayerMask = kBlueNoiseLayerCount - 1;
@@ -255,6 +256,28 @@ void RenderVanilla(HitInfo hitInfo, inout RayState rayState)
     rayState.motion = surfaceInfo.position - surfaceInfo.prevPosition;
 }
 
+// Set to false by default
+#ifndef CULL_GLASS_BACK_FACES
+#define CULL_GLASS_BACK_FACES 0
+#endif
+bool AlphaTestHitLogic1(HitInfo hitInfo)
+{
+#if CULL_GLASS_BACK_FACES
+    if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !hitInfo.frontFacing)
+        return false;
+#endif
+    // If this logic runs for non-alphatested things, always register a hit.
+    if (hitInfo.materialType != MATERIAL_TYPE_ALPHA_TEST)
+        return true;
+
+    // Tip: instead of calculating material every time, you can calculate UVs during CalculateFaceData pass and cache them in faceUvBuffers.
+    // Then during alpha testing, cached UVs can be used to sample texture(s) instead of using expensive material and geometry computations.
+    ObjectInstance obj = objectInstances[hitInfo.objectInstanceIndex];
+    GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, obj);
+    SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, obj);
+
+    return !surfaceInfo.shouldDiscard;
+}
 
 void skyCol(inout RayState rayState)
 {
@@ -274,14 +297,14 @@ float3 computeSkylight(float3 n)
     float3 skyDirs[9] = 
     {
          float3(1.0, 1.0, 1.0),               // zenith (heavily weighted)
-        normalize(float3(1.0, 0.0, 0.15)),
+        normalize(float3(1.0, -0.2, 0.15)),
         normalize(float3(-1.0, 0.35, 0.0)),
         normalize(float3(0.0, 0.35, 1.0)),
         normalize(float3(0.0, 0.3, -1.0)),
         normalize(float3(0.707, 0.21, 0.707)),
         normalize(float3(-0.707, 0.21, 0.707)),
         normalize(float3(3.0, 3.0, 3.0)),     // extra zenith sample
-        normalize(float3(0.0, -0.3, 0.0))   // downward - ground bounce (dimmed)
+        normalize(float3(0.0, -0.04, 0.0))   // downward - ground bounce (dimmed)
     };
        
     
@@ -291,7 +314,7 @@ float3 computeSkylight(float3 n)
         float contribution = max(dot(n, skyDirs[i]), 0.0);
          float NdotL = max(dot(n, getTrueDirectionToSun()), 0.0);
         
-        if(i >= 8) contribution *= 0.0055;  // downward samples (ground bounce) are weaker
+        if(i >= 8) contribution *= 0.345;  // downward samples (ground bounce) are weaker
         
         result += skyCompute(normalize(skyDirs[i])) * contribution;
         totalWeight += contribution;
@@ -307,7 +330,7 @@ float3 computeSkylight(float3 n)
     // Areas with high occlusion (bent normal deviates strongly) get brightened
     float visibility = lerp(1.0, length(bentNormal) * 0.7, 0.5);
 
-    return result / max(totalWeight, 0.01) * visibility;
+    return result / max(totalWeight, 0.01);
 }
 
 
@@ -330,7 +353,7 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
         while (q.Proceed())
         {
             HitInfo hitInfo = GetCandidateHitInfo(q);
-            if (AlphaTestHitLogic(hitInfo))
+            if (AlphaTestHitLogic1(hitInfo))
             {
                 q.CommitNonOpaqueTriangleHit();
             }
@@ -368,13 +391,18 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
             float sunIntensity = sunlightColor.a;
             sunlightColor.rgb *= luminance(sunlightColor.rgb * sunIntensity);
             float3 NdotL = saturate(dot(surfaceInfo.normal, mainLightDir));
-            float3 skylight = computeSkylight(surfaceInfo.normal) * SKYLIGHT_MULTIPLIER;
+            float3 skylight = computeSkylight(surfaceInfo.normal) * SKYLIGHT_INTENSITY;
             float3 black = float3(0.0,0.0,0.0);
             float3 lighting = float3(0.0,0.0,0.0);
+            float3 diffuseGI = float3(0.0,0.0,0.0);
             float3 sunShadow = float3(1.0,1.0,1.0);
+            float3 skyShadows = float3(1.0,1.0,1.0);
             float4 blueNoise = GetBlueNoiseValue(pixelCoord);
 
             getShadow(surfaceInfo, mainLightDir, blueNoise.xy, sunShadow);
+            skyShadow(surfaceInfo, blueNoise.xy, skyShadows);
+            sunLightGi(surfaceInfo, mainLightDir, blueNoise.xy, diffuseGI);
+            diffuseGI *= sunlightColor.rgb;
             //Special water handling
             if(hitInfo.materialType == MATERIAL_TYPE_WATER)
             {
@@ -397,9 +425,9 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
 
          
             
-            float3 reflection = skyReflection(rayState.rayDesc.Direction, surfaceInfo.normal, surfaceInfo, blueNoise.xyz);
-            
-            lighting = BRDF(surfaceInfo.normal, -rayState.rayDesc.Direction, mainLightDir, sunlightColor.rgb, skylight, reflection, surfaceInfo, sunShadow);
+            float3 reflection = skyReflection(rayState.rayDesc.Direction, surfaceInfo.normal, surfaceInfo, blueNoise.xyz) * skyShadows;
+            skylight *= skyShadows;
+            lighting = BRDF(surfaceInfo.normal, -rayState.rayDesc.Direction, mainLightDir, sunlightColor.rgb, skylight, reflection, surfaceInfo, sunShadow, diffuseGI);
              // Calculate point lights.
     for (int i = 0; i < min(80, g_view.cpuLightsCount); i++)
     {
