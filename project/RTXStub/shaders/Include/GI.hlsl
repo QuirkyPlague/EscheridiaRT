@@ -25,7 +25,7 @@ void TraceGiBounce(in RayDesc ray, out GiHitPayload payload)
     RayQuery<RAY_FLAG_NONE> q;
 
     const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY | INSTANCE_MASK_ALPHA_BLEND_SECONDARY | INSTANCE_MASK_WATER;
-    q.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, INSTANCE_MASK_SHADOW, ray);
+    q.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, INSTANCE_MASK_SHADOW, ray);
 
     while(q.Proceed())
     {
@@ -62,7 +62,7 @@ void TraceGiBounce(in RayDesc ray, out GiHitPayload payload)
 
         payload.hit = true;
         payload.position = hitSurface.position;
-        payload.normal = hitSurface.normal;
+        payload.normal = normalize(hitSurface.normal);
         payload.albedo = hitSurface.color;
     }
 }
@@ -74,7 +74,7 @@ void sunLightGi(SurfaceInfo surfaceInfo, float3 direction, float2 noise, inout f
     
     const uint giSamples = 2;
     GiHitPayload payload;
-  float3 giRadiance = 0;
+  float3 giRadiance = float3(0.0,0.0,0.0);
 
 for(uint i = 0; i < giSamples; i++)
 {
@@ -93,10 +93,10 @@ for(uint i = 0; i < giSamples; i++)
 
     bounceRay.Origin =
         surfaceInfo.position +
-        surfaceInfo.normal * 1e-4;
+        1.0e-1 * surfaceInfo.normal ;
 
     bounceRay.Direction = sampleDir;
-    bounceRay.TMin = 0.0;
+    bounceRay.TMin = 0.001;
     bounceRay.TMax = 10000.0;
 
     GiHitPayload payload;
@@ -105,13 +105,16 @@ for(uint i = 0; i < giSamples; i++)
         bounceRay,
         payload);
 
+        if (dot(payload.normal, -sampleDir) <= 0)
+    continue;
+    
     if(payload.hit)
     {
         SurfaceInfo bounceSurface;
 
         bounceSurface.position = payload.position;
-        bounceSurface.normal = payload.normal;
-
+        bounceSurface.normal = payload.normal * 0.5 + 0.5;
+        
         float3 shadowTransmission;
 
         getShadow(
@@ -132,7 +135,7 @@ for(uint i = 0; i < giSamples; i++)
     }
 }
 radiance +=
-    (giRadiance / giSamples);
+    (giRadiance / float(giSamples));
 }
     
     

@@ -5,14 +5,14 @@
 
 // Lighting Parameters
 #define SUN_RADIUS   0.025
-#define SUN_INTENSITY 2.45
+#define SUN_INTENSITY 2.41
 #define SKYLIGHT_INTENSITY 3.24
 #define CLOUD_SHADOW_OPACITY 0.516
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7625,0.545, 0.95)
+#define DAY_SUN_COLOR float4(1.0,0.7625,0.545, 0.85)
 #define NOON_SUN_COLOR float4(1.0,0.95,0.85, 0.75)
-#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 0.61)
+#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 0.881)
 #define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.4)
 
 //sky intensity multipliers
