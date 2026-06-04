@@ -379,7 +379,7 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
             surfaceInfo.color = pow(surfaceInfo.color, 2.2);
             float3 emissive = float3(0.0,0.0,0.0);
     
-            float3 sunDir = getTrueDirectionToSun();
+            float3 sunDir = g_view.directionToSun;
             float3 moonDir = -sunDir;
 
             float sunFade = saturate(sunDir.y);
@@ -390,7 +390,6 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
             
             float sunIntensity = sunlightColor.a;
             sunlightColor.rgb *= luminance(sunlightColor.rgb * sunIntensity);
-            float3 NdotL = saturate(dot(surfaceInfo.normal, mainLightDir));
             float3 skylight = computeSkylight(surfaceInfo.normal) * SKYLIGHT_INTENSITY;
             float3 black = float3(0.0,0.0,0.0);
             float3 lighting = float3(0.0,0.0,0.0);
@@ -427,7 +426,7 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
             
             float3 reflection = skyReflection(rayState.rayDesc.Direction, surfaceInfo.normal, surfaceInfo, blueNoise.xyz) * skyShadows;
             skylight *= skyShadows;
-            lighting = BRDF(surfaceInfo.normal, -rayState.rayDesc.Direction, mainLightDir, sunlightColor.rgb, skylight, reflection, surfaceInfo, sunShadow, diffuseGI);
+            lighting = BRDF(surfaceInfo.normal, normalize(-surfaceInfo.position), sunDir, sunlightColor.rgb, skylight, reflection, surfaceInfo, sunShadow, diffuseGI );
              // Calculate point lights.
     for (int i = 0; i < min(80, g_view.cpuLightsCount); i++)
     {
@@ -441,7 +440,7 @@ float3 RenderRay(RayDesc rayDesc, uint2 pixelCoord, out float outputDistance, ou
        
         float attenuation = max(0, dot(surfaceInfo.normal, lDir)) / (lDist * lDist);
         float3 pointLight = 100 * attenuation * lightData.intensity * lightData.color;
-        lighting += BRDFPoint(surfaceInfo.normal, -rayState.rayDesc.Direction, lDir, pointLight, skylight, surfaceInfo);
+        lighting += BRDFPoint(surfaceInfo.normal, normalize(-surfaceInfo.position), lDir, pointLight, skylight, surfaceInfo);
     }
 
             float3 throughput;

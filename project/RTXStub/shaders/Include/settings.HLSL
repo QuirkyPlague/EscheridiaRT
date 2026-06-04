@@ -7,7 +7,7 @@
 #define SUN_RADIUS   0.025
 #define SUN_INTENSITY 2.45
 #define SKYLIGHT_INTENSITY 3.24
-#define CLOUD_SHADOW_OPACITY 0.586
+#define CLOUD_SHADOW_OPACITY 0.516
 
 //Sun colors alpha stores intensity
 #define DAY_SUN_COLOR float4(1.0,0.7625,0.545, 0.95)
@@ -29,8 +29,8 @@
 #define NIGHT_SKY_COL                  float3(0.035, 0.0745, 0.2724)
 
 //sky horizon colors
-#define DAY_HORIZON_COL                float3(0.7653, 0.9176, 1.0)
-#define NOON_HORIZON_COL               float3(0.8353, 0.9176, 1.0)
+#define DAY_HORIZON_COL                float3(0.6453, 0.8176, 1.0)
+#define NOON_HORIZON_COL               float3(0.6453, 0.8176, 1.0)
 #define SUNRISE_HORIZON_COL            float3(0.9827, 0.5302, 0.3941)
 #define SUNSET_HORIZON_COL             float3(0.8784, 0.3451, 0.1359)
 #define NIGHT_HORIZON_COL              float3(0.0559, 0.1169, 0.2114)
@@ -52,7 +52,7 @@
 #define NIGHT_MIE_COL                  float4(0.2824, 0.1196, 0.0745, 0.75)
 
 //Sky blending points
-#define ZENITH_BLEND                    0.5              
+#define ZENITH_BLEND                    0.37             
 #define HORIZON_BLEND                   5.5  
 #define GROUND_BLEND                    0.55
 

@@ -58,7 +58,7 @@ float3 BRDF(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, floa
     float3 Lo = float3(0.0,0.0,0.0);
     float3 H = normalize(V + L);
     float dist = length(L);
-    float attenuation = saturate(1.0 / (dist * dist));
+    float attenuation = 1.0 / (dist * dist);
      float NdotL = saturate(dot(N, L));
     float NdotV = saturate(dot(N, V));
     float NdotH = saturate(dot(N, H));
@@ -66,10 +66,10 @@ float3 BRDF(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, floa
     float VdotL = saturate(dot(V,L));
 
     
-    float3 radiance = sunColor  * shadow;
+    float3 radiance = sunColor * attenuation * shadow;
     float3 F0 = lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness);
     
-    float3 F = fresnelSchlick(saturate(dot(H, V)), F0);
+    float3 F = fresnelSchlick(max(dot(H, V), 0.0001), F0);
     float NDF = DistributionGGX(N, H, surfaceInfo.roughness);
     float G = GeometrySmith(N, V, L, surfaceInfo.roughness);
 
@@ -81,17 +81,17 @@ float3 BRDF(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, floa
  
 
     float diff = BurleyFrostbite(surfaceInfo.roughness, NdotL,NdotV, VdotH);
-    diff = saturate(diff);
+
     float3 kS = F;
-    float3 kD = saturate(1.0 - kS);
-    kD *= saturate(1.0 - surfaceInfo.metalness);
-    //indirect *= kD;
+    float3 kD = float3(1.0,1.0,1.0) - kS;
+    kD *= (1.0 - surfaceInfo.metalness);
+    
    // add to outgoing radiance Lo
-  indirect *= surfaceInfo.color;
-  GIRadiance *= kD * surfaceInfo.color;
+  indirect *= surfaceInfo.color * (1.0 - surfaceInfo.metalness);
+  GIRadiance *= surfaceInfo.color * (1.0 - surfaceInfo.metalness);
    GIRadiance *= diff;
-  Lo = (kD * surfaceInfo.color ) * (radiance * NdotL) * diff + GIRadiance;
-  Lo = lerp(Lo, specular, F) + indirect ;
+  Lo = (kD * surfaceInfo.color ) * diff  * (radiance * NdotL)  ;
+  Lo = lerp(Lo, specular, F) + indirect + GIRadiance ;
     Lo = lerp(Lo, specular, surfaceInfo.metalness);
      Lo += reflectedColor;
     Lo += (surfaceInfo.color * (surfaceInfo.emissive * 65.0));
