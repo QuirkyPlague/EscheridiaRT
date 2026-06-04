@@ -4,7 +4,7 @@
 #include "Generated/Signature.hlsl"
 #include "Material.hlsl"
 #include "settings.hlsl"
-#include "Util.hlsl"
+#include "Util.hlsl" 
 
 // Set to false by default
 #ifndef CULL_GLASS_BACK_FACES
@@ -34,12 +34,11 @@ struct ShadowPayload
 {
     float3 transmission;
 };
-
 void TraceShadowRay(in RayDesc ray, out ShadowPayload payload)
 {
     RayQuery<RAY_FLAG_NONE> q;
     const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY | INSTANCE_MASK_ALPHA_BLEND_SECONDARY | INSTANCE_MASK_WATER;
-    q.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, INSTANCE_MASK_SHADOW, ray);
+    q.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, INSTANCE_MASK_SHADOW, ray);
 
     float3 transmission = 1;
 
@@ -67,7 +66,7 @@ void TraceShadowRay(in RayDesc ray, out ShadowPayload payload)
         {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
-            transmission *= (1.0 - surfaceInfo.alpha)  * surfaceInfo.color;
+            transmission *= (1.0 - surfaceInfo.alpha) * surfaceInfo.color;
             
             if (!any(transmission))
                 q.CommitNonOpaqueTriangleHit();
@@ -88,11 +87,9 @@ void TraceShadowRay(in RayDesc ray, out ShadowPayload payload)
     payload.transmission = q.CommittedStatus() == COMMITTED_NOTHING ? transmission : 0;
 }
 
-
-
 void getShadow(SurfaceInfo surfaceInfo, float3 lightDir, float2 noise, inout float3 shadowTransmission)
 {   
-    const uint shadowSteps = 2;
+    const uint shadowSteps = 4;
 
     float3 T = normalize(cross(
         abs(lightDir.z) < 0.999 ?
@@ -113,7 +110,9 @@ void getShadow(SurfaceInfo surfaceInfo, float3 lightDir, float2 noise, inout flo
         float r = sunRadius * sqrt(Xi.x);
         float theta = 2.0 * PI * Xi.y;
 
-        float2 disk = saturate(r * float2(cos(theta),sin(theta)));
+        float2 disk = r * float2(
+            cos(theta),
+            sin(theta));
 
         float3 sampleDir = normalize(
             lightDir +

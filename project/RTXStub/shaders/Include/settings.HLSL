@@ -4,7 +4,7 @@
 
 
 // Lighting Parameters
-#define SUN_RADIUS   0.015
+#define SUN_RADIUS   0.025
 #define SUN_INTENSITY 2.45
 #define SKYLIGHT_INTENSITY 3.24
 #define CLOUD_SHADOW_OPACITY 0.586
@@ -17,13 +17,13 @@
 
 //sky intensity multipliers
 
-#define RAYLEIGH_MULT                  1.4 //brightness of the sky
+#define RAYLEIGH_MULT                  1.6 //brightness of the sky
 #define NIGHT_INTENSITY                0.11 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
 //sky zenith colors
-#define DAY_SKY_COL                    float3(0.385, 0.612, 1.0)
-#define NOON_SKY_COL                   float3(0.315, 0.612, 1.0)
+#define DAY_SKY_COL                    float3(0.275, 0.512, 1.0)
+#define NOON_SKY_COL                   float3(0.275, 0.512, 1.0)
 #define SUNRISE_SKY_COL                float3(0.2592, 0.6353, 1.0)
 #define SUNSET_SKY_COL                 float3(0.2322, 0.4529, 0.8265)
 #define NIGHT_SKY_COL                  float3(0.035, 0.0745, 0.2724)

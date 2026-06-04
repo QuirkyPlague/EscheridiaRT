@@ -24,11 +24,8 @@ void TraceGiBounce(in RayDesc ray, out GiHitPayload payload)
 
     RayQuery<RAY_FLAG_NONE> q;
 
-    q.TraceRayInline(
-        SceneBVH,
-        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
-        INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY,
-        ray);
+    const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY | INSTANCE_MASK_ALPHA_BLEND_SECONDARY | INSTANCE_MASK_WATER;
+    q.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, INSTANCE_MASK_SHADOW, ray);
 
     while(q.Proceed())
     {

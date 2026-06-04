@@ -222,8 +222,8 @@ float3 skyScattering1(float3 pos)
    
     const float3 horizonColors[7] = {
       	NOON_HORIZON_COL,
-        DAY_HORIZON_COL * 1.4,
-        DAY_HORIZON_COL * 1.4,
+        DAY_HORIZON_COL * 1.2,
+        DAY_HORIZON_COL * 1.2,
         SUNRISE_HORIZON_COL * 1.15,
         SUNSET_HORIZON_COL * 0.1,
         SUNSET_HORIZON_COL * 0.025,
