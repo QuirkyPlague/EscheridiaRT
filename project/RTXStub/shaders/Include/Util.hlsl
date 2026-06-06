@@ -187,5 +187,27 @@ float3 CosineHemisphereSampling(float2 Xi, float3 N)
         sqrt(1.0 - Xi.x) * N);
 }
 
+float4 getMediaExtinction(int medium) {
 
+    return g_view.mediaExtinction[medium];
+}
+
+float3 getScattering()
+{
+    return g_view.primaryMediaScattering;
+}
+
+float3 getMediaAbsorption()
+{
+    return g_view.primaryMediaAbsorption;
+}
+
+float3 getMediaPrimaryExtinction()
+{
+    return g_view.primaryMediaExtinction;
+}
+float3 calcTransmittance(float distance, float3 extinction)
+{
+	return exp(-extinction * distance);
+}
 #endif

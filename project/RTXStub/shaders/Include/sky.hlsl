@@ -166,6 +166,54 @@ float3 skyCompute(float3 pos)
     return color;
 }
 
+float3 getSkyColor(float3 color)
+{
+     const float3 colors[7] =
+	{
+		NOON_SKY_COL,
+        DAY_SKY_COL,
+        DAY_SKY_COL,
+        SUNRISE_SKY_COL,
+        SUNSET_SKY_COL * 0.06,
+        SUNSET_SKY_COL * 0.025,
+        NIGHT_SKY_COL * NIGHT_INTENSITY
+	};
+	const float times[7] =
+	{
+		0.0000000000, // 6000
+		0.1920399368, // 3000
+		0.3466664553, // 1000
+		0.4309642911, // 0
+		0.4746705294, // 23500
+		0.5193186402, // 23000
+		0.5621
+	};
+
+    float time = getTime();
+
+	float timediff = clamp(abs(g_view.skyTextureW - 0.51952102785), 0, 0.00879302615);
+    timediff *= 1.0 / 0.00879302615;
+    float3 zenithCol = NIGHT_SKY_COL * NIGHT_INTENSITY;
+    
+		
+	[unroll] for (int i = 1; i < 7; i++)
+	{
+		if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i])
+		{
+			float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
+			
+			zenithCol = lerp(colors[i - 1], colors[i], w);
+			break;
+		}
+	}
+
+    color = zenithCol;
+	float skyLuminance = dot(color, 1.0);
+	color = pow(color, 1.5);
+	color *= skyLuminance / dot(color, 1.0);
+    return color;
+}
+
 float3 skyScattering1(float3 pos)
 {
     
@@ -293,15 +341,15 @@ float3 skyScattering1(float3 pos)
     float3 sky = zenithCol + horizonCol + groundCol;
 	
     float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) ;
-    ;
+    
 
-    float3 moonMieScatterColor = float3(0.00341, 0.00441, 0.01796) * sunColor.rgb;
+    float3 moonMieScatterColor = float3(0.00341, 0.00441, 0.01796);
      float sVoL = dot(dir, sunDir);
     float mVoL = dot(dir, -sunDir);
 
     float miePhase = HG(sVoL, mieScale);
 
-    float3 mieColors = mieScat * miePhase * 0.7;
+    float3 mieColors = sunColor.rgb * mieScat * miePhase * 0.7;
 
     float moonPhase = HG(mVoL, 0.931);
     float3 mieNight = moonMieScatterColor * moonPhase * 0.017;

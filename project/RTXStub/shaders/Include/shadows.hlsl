@@ -38,7 +38,7 @@ void TraceShadowRay(in RayDesc ray, out ShadowPayload payload)
 {
     RayQuery<RAY_FLAG_NONE> q;
     const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY | INSTANCE_MASK_ALPHA_BLEND_SECONDARY | INSTANCE_MASK_WATER;
-    q.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, INSTANCE_MASK_SHADOW, ray);
+    q.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, INSTANCE_MASK_SHADOW, ray);
 
     float3 transmission = 1;
 
@@ -73,8 +73,9 @@ void TraceShadowRay(in RayDesc ray, out ShadowPayload payload)
         }
         else if (hitInfo.materialType == MATERIAL_TYPE_WATER)
         {
-            // Simple water transmission approximation
-            transmission *= float3(0.2, 0.5, 0.8);
+            GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
+            SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
+transmission *= calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb);
             if (!any(transmission))
                 q.CommitNonOpaqueTriangleHit();
         }
@@ -89,7 +90,7 @@ void TraceShadowRay(in RayDesc ray, out ShadowPayload payload)
 
 void getShadow(SurfaceInfo surfaceInfo, float3 lightDir, float2 noise, inout float3 shadowTransmission)
 {   
-    const uint shadowSteps = 4;
+    const uint shadowSteps = 1;
 
     float3 T = normalize(cross(
         abs(lightDir.z) < 0.999 ?
@@ -149,7 +150,7 @@ void TraceSkyShadowRay(in RayDesc ray, out skyShadowPayload payload)
 {
     RayQuery<RAY_FLAG_NONE> q;
     const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY | INSTANCE_MASK_ALPHA_BLEND_SECONDARY | INSTANCE_MASK_WATER;
-    q.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, INSTANCE_MASK_SHADOW, ray);
+    q.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, INSTANCE_MASK_SHADOW, ray);
 
     float3 transmission = 1;
 
@@ -162,7 +163,7 @@ void TraceSkyShadowRay(in RayDesc ray, out skyShadowPayload payload)
         if (isCloud)
         {
             // Simple cloud shadow approximation
-            //transmission *= saturate(1.0 - CLOUD_SHADOW_OPACITY);
+            transmission *= saturate(1.0 - CLOUD_SHADOW_OPACITY);
             continue;
         };
 
@@ -185,7 +186,10 @@ void TraceSkyShadowRay(in RayDesc ray, out skyShadowPayload payload)
         else if (hitInfo.materialType == MATERIAL_TYPE_WATER)
         {
             // Simple water transmission approximation
-            transmission *= float3(0.2, 0.5, 0.8);
+            transmission *= calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb);
+
+	
+
             if (!any(transmission))
                 q.CommitNonOpaqueTriangleHit();
         }
@@ -200,7 +204,7 @@ void TraceSkyShadowRay(in RayDesc ray, out skyShadowPayload payload)
 
 void skyShadow(SurfaceInfo surfaceInfo, float2 noise, inout float3 shadowTransmission)
 {
-    const uint skySample = 4;
+    const uint skySample = 3;
     skyShadowPayload payload;
     float3 transmission = 0;
     for(uint i = 0; i < skySample; i++)

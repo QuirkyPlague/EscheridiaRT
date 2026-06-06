@@ -72,12 +72,13 @@ void TraceGiBounce(in RayDesc ray, out GiHitPayload payload)
 void sunLightGi(SurfaceInfo surfaceInfo, float3 direction, float2 noise, inout float3 radiance)
 {
     
-    const uint giSamples = 2;
+    const uint giSamples = 4;
     GiHitPayload payload;
   float3 giRadiance = float3(0.0,0.0,0.0);
 
 for(uint i = 0; i < giSamples; i++)
 {
+    
     float2 Xi = frac(
         noise +
         float2(
@@ -93,10 +94,10 @@ for(uint i = 0; i < giSamples; i++)
 
     bounceRay.Origin =
         surfaceInfo.position +
-        1.0e-1 * surfaceInfo.normal ;
+        1.0e-4 * surfaceInfo.normal ;
 
     bounceRay.Direction = sampleDir;
-    bounceRay.TMin = 0.001;
+    bounceRay.TMin = 0.00;
     bounceRay.TMax = 10000.0;
 
     GiHitPayload payload;

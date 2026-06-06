@@ -1,3 +1,5 @@
+
+
 [numthreads(4, 8, 1)]
 void PathTracingRayGenInline(
     uint3 dispatchThreadID : SV_DispatchThreadID,
@@ -6,5 +8,5 @@ void PathTracingRayGenInline(
     uint3 groupID : SV_GroupID
     )
 {
-    // *cricket noises*
+
 }

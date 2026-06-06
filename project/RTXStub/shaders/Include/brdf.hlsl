@@ -2,7 +2,7 @@
 #define BRDF_HLSL
 
 #include "sky.hlsl"
-
+#include "shadows.hlsl"
 //Basic cook torrance
 
 float DistributionGGX(float3 N, float3 H, float roughness) {
@@ -54,7 +54,7 @@ float BurleyFrostbite(float roughness, float n_dot_l, float n_dot_v, float v_dot
 }
 
 
-float3 BRDF(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, float3 reflectedColor, SurfaceInfo surfaceInfo, float3 shadow, float3 GIRadiance) {
+float3 BRDF(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, float3 reflectedColor, SurfaceInfo surfaceInfo, float3 shadow, float3 GIRadiance, float3 transmission) {
     float3 Lo = float3(0.0,0.0,0.0);
     float3 H = normalize(V + L);
     float dist = length(L);
@@ -87,14 +87,15 @@ float3 BRDF(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, floa
     kD *= (1.0 - surfaceInfo.metalness);
     
    // add to outgoing radiance Lo
-  indirect *= surfaceInfo.color * (1.0 - surfaceInfo.metalness);
-  GIRadiance *= surfaceInfo.color * (1.0 - surfaceInfo.metalness);
-   GIRadiance *= diff;
-  Lo = (kD * surfaceInfo.color ) * diff  * (radiance * NdotL)  ;
+  indirect *= (surfaceInfo.color * (1.0 - surfaceInfo.metalness));
+  GIRadiance *=  ((1.0 - surfaceInfo.metalness) * surfaceInfo.color) * diff ;
+  float3 emission = surfaceInfo.color * (surfaceInfo.emissive * 65.0);
+  emission *= transmission;
+  Lo = (kD * surfaceInfo.color ) * diff  * (radiance * NdotL) * transmission  ;
   Lo = lerp(Lo, specular, F) + indirect + GIRadiance ;
     Lo = lerp(Lo, specular, surfaceInfo.metalness);
      Lo += reflectedColor;
-    Lo += (surfaceInfo.color * (surfaceInfo.emissive * 65.0));
+    Lo += emission;
    
   
   return Lo;
@@ -190,6 +191,8 @@ float alpha = max(surfaceInfo.roughness * surfaceInfo.roughness, 0.001);
   return skyColor;
 
 }
+
+
 
 float3 BRDFPoint(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, SurfaceInfo surfaceInfo) {
   float3 Lo = float3(0.0,0.0,0.0);

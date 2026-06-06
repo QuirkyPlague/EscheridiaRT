@@ -4,33 +4,34 @@
 
 
 // Lighting Parameters
-#define SUN_RADIUS   0.025
-#define SUN_INTENSITY 2.41
-#define SKYLIGHT_INTENSITY 3.24
+#define SUN_RADIUS   0.004
+#define SUN_INTENSITY 2.5
+#define SKYLIGHT_INTENSITY 3.15
+#define GI_BRIGHTNESS 1.0
 #define CLOUD_SHADOW_OPACITY 0.516
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7625,0.545, 0.85)
+#define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 0.85)
 #define NOON_SUN_COLOR float4(1.0,0.95,0.85, 0.75)
 #define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 0.881)
 #define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.4)
 
 //sky intensity multipliers
 
-#define RAYLEIGH_MULT                  1.6 //brightness of the sky
-#define NIGHT_INTENSITY                0.11 //brightness of the night sky
+#define RAYLEIGH_MULT                  1.1 //brightness of the sky
+#define NIGHT_INTENSITY                0.41 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
 //sky zenith colors
-#define DAY_SKY_COL                    float3(0.275, 0.512, 1.0)
-#define NOON_SKY_COL                   float3(0.275, 0.512, 1.0)
+#define DAY_SKY_COL                    float3(0.225, 0.512, 1.0)
+#define NOON_SKY_COL                   float3(0.225, 0.512, 1.0)
 #define SUNRISE_SKY_COL                float3(0.2592, 0.6353, 1.0)
 #define SUNSET_SKY_COL                 float3(0.2322, 0.4529, 0.8265)
 #define NIGHT_SKY_COL                  float3(0.035, 0.0745, 0.2724)
 
 //sky horizon colors
-#define DAY_HORIZON_COL                float3(0.6453, 0.8176, 1.0)
-#define NOON_HORIZON_COL               float3(0.6453, 0.8176, 1.0)
+#define DAY_HORIZON_COL                float3(0.4453, 0.8176, 1.0)
+#define NOON_HORIZON_COL               float3(0.4453, 0.8176, 1.0)
 #define SUNRISE_HORIZON_COL            float3(0.9827, 0.5302, 0.3941)
 #define SUNSET_HORIZON_COL             float3(0.8784, 0.3451, 0.1359)
 #define NIGHT_HORIZON_COL              float3(0.0559, 0.1169, 0.2114)

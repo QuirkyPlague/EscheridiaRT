@@ -22,7 +22,7 @@
  */
 
 // If enabled, will match vanilla graphics and cull transparent back faces. Refer to Renderer.hlsl to see what it does.
-#define CULL_GLASS_BACK_FACES 1
+#define CULL_GLASS_BACK_FACES 0
 
 #include "Include/Renderer.hlsl"
 #include "Include/Util.hlsl"
