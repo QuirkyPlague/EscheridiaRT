@@ -14,4 +14,13 @@ void FinalCombine(
 
     // Use for indexing shadowDenoisingInputs[] or shadowDenoisingOutputs[] arrays
     uint shadowDenoisingBufferIndex = (g_rootConstant0 >> 16) & 0xff;
+
+    uint2 pixelPos = dispatchThreadID.xy;
+
+
+    float3 denoisedDiffuse = outputBufferIndirectDiffuse[pixelPos].rgb;
+
+float3 directColor = outputBufferIndirectSpecular[pixelPos].xyz;
+
+outputBufferFinal[pixelPos] = float4(directColor + denoisedDiffuse, 1.0);
 }

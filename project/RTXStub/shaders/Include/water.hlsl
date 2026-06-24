@@ -2,6 +2,8 @@
 #define WATER_HLSL
 
 #include "settings.hlsl"
+#include "Util.hlsl"
+
 // Calculates wave value and its derivative,
 // for the wave direction, position in space, wave frequency and time
 float2 wavedx(float2 position, float2 direction, float frequency, float timeshift)
@@ -67,6 +69,34 @@ float3 waveNormal(float2 pos, float e, float depth)
     float3 v2 = a - float3(pos.x, hR, pos.y + e);
 
     return normalize(cross(v1, v2));
+}
+
+
+float calcWaterCaustics(float3 position, float rayLength) {
+    //
+    // Old-school animated texture lookup
+    //
+    float2 wibblyUV = mad(position.xz, g_view.steveToWibblyScale, g_view.steveToWibblyBias);
+    float2 wibble = wibblyTexture.SampleLevel(linearWrapSampler, wibblyUV, 0) - 0.5;
+
+    float2 causticsUV = float2(mad(position.xz, g_view.steveToCausticsScale, g_view.steveToCausticsBias));
+    causticsUV += wibble * 0.6;
+
+    const int causticsWNum = 64;
+
+    float index = g_view.causticsWCoord * (causticsWNum - 1);
+    int causticsW1 = floor(index);
+    int causticsW2 = (causticsW1 + 1) % causticsWNum;
+    float caustic1 = causticsTexture.SampleLevel(linearWrapSampler, float3(causticsUV, causticsW1), 0);
+    float caustic2 = causticsTexture.SampleLevel(linearWrapSampler, float3(causticsUV, causticsW2), 0);
+
+    float caustics = lerp(caustic1, caustic2, frac(index)) * 7;
+
+    caustics *= 3.0;
+    caustics += 0.4f; // Normalisation offset (texture isn't great)
+    // Reduce the effects with depth.  TODO: Add mipmaps
+    caustics = lerp(1, caustics, exp2(-rayLength * 0.001));
+    return max(caustics, 0.0);
 }
 
 #endif //WATER_HLSL

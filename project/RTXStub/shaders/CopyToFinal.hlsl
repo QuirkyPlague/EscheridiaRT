@@ -39,11 +39,20 @@ void CopyToFinal(
     // Below code is part of the example ray tracing shader implementation.
     if (any(dispatchThreadID.xy >= g_view.displayResolution)) return;
 
+    float4 color;
     if (isUpscalingEnabled()) {
         // Pick up upscaled results from inputThisFrameTAAHistory
-        float4 upscaledColor = inputThisFrameTAAHistory[dispatchThreadID.xy];
-        upscaledColor.xyz = TonemapACES(upscaledColor.xyz);
-        upscaledColor.xyz = pow(upscaledColor.xyz, 1.0/2.2); // Gamma correction.
-        outputBufferFinal[dispatchThreadID.xy] = upscaledColor;
-    } 
+        color = inputThisFrameTAAHistory[dispatchThreadID.xy];
+         color.rgb = tonemapAgX(color.rgb);
+        color.rgb = pow(color.rgb, 1.0/2.2); // Gamma correction.
+        outputBufferFinal[dispatchThreadID.xy] = color;
+    } else {
+        color = outputBufferFinal[dispatchThreadID.xy];
+            color.rgb = tonemapAgX(color.rgb);
+    color.rgb = pow(color.rgb, 1.0/2.2); // Gamma correction.
+    outputBufferFinal[dispatchThreadID.xy] = color;
+    }
+    
+    
+
 }

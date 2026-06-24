@@ -6,140 +6,122 @@
 #include "settings.hlsl"
 #include "Util.hlsl"
 #include "shadows.hlsl"
+#include "brdf.hlsl"
+#include "tonemapping.hlsl"
 
+struct GiHitPayload {
 
-
-struct GiHitPayload
-{
-    bool hit;
-
-    float3 position;
+     float3 position;
+    float3 direction;
+    float3 color;
     float3 normal;
-    float3 albedo;
+    float roughness;
+    float metalness;
+    float emission;
+    float alpha;
+    float3 transmission;
+    bool hit;
 };
 
-void TraceGiBounce(in RayDesc ray, out GiHitPayload payload)
-{
-    payload.hit = false;
-
-    RayQuery<RAY_FLAG_NONE> q;
-
-    const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY | INSTANCE_MASK_ALPHA_BLEND_SECONDARY | INSTANCE_MASK_WATER;
-    q.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, INSTANCE_MASK_SHADOW, ray);
-
-    while(q.Proceed())
+void TraceGIBounce(in RayDesc ray, out GiHitPayload payload, bool isSecondary) {
+    RayQuery<RAY_FLAG_NONE> query;
+    
+    if(!isSecondary)
     {
-        HitInfo hitInfo = GetCandidateHitInfo(q);
+        query.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, 0xff, ray);
+    }
+    else
+    {
+        query.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xff, ray);
+    }
+    
 
-        if(hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST)
-        {
-            if(AlphaTestHitLogic(hitInfo))
-            {
-                q.CommitNonOpaqueTriangleHit();
-            }
+    payload.hit = false;
+    float3 transmission = 1.0;
+    while(query.Proceed()) {
+        
+        HitInfo hitInfo = GetCandidateHitInfo(query);
+        ObjectInstance object = objectInstances[hitInfo.objectInstanceIndex];
+        if (object.flags & (kObjectInstanceFlagSun | kObjectInstanceFlagMoon)) {
+            payload.color = 0.0;
+            break;
         }
-        else
-        {
-            q.CommitNonOpaqueTriangleHit();
+
+        if(hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST) {
+            if(AlphaTestHitLogic(hitInfo)) {
+                query.CommitNonOpaqueTriangleHit();
+                break;
+            }
+            continue;
+        }
+        else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) {
+            GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
+            SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
+
+
+            transmission *= lerp(surfaceInfo.color, 0..xxx, surfaceInfo.alpha);
+
+            if (!any(transmission))
+            query.CommitNonOpaqueTriangleHit();
+        }
+        else {
+            query.CommitNonOpaqueTriangleHit();
         }
     }
 
-    if(q.CommittedStatus() != COMMITTED_NOTHING)
-    {
-        HitInfo hitInfo = GetCommittedHitInfo(q);
+    if(query.CommittedStatus() != COMMITTED_NOTHING) {
+        HitInfo hitInfo = GetCommittedHitInfo(query);
 
         ObjectInstance object =
-            objectInstances[hitInfo.objectInstanceIndex];
+        objectInstances[hitInfo.objectInstanceIndex];
 
         GeometryInfo geometryInfo =
-            GetGeometryInfo(hitInfo, object);
+        GetGeometryInfo(hitInfo, object);
 
         SurfaceInfo hitSurface =
-            MaterialVanilla(
-                hitInfo,
-                geometryInfo,
-                object);
+        MaterialVanilla(
+            hitInfo,
+            geometryInfo,
+            object);
 
         payload.hit = true;
+       if (object.flags & (kObjectInstanceFlagSun | kObjectInstanceFlagMoon)) {
+                payload.color = 0;
+                payload.hit = false;
+            }
+    
+
         payload.position = hitSurface.position;
+        float3 direction = normalize(hitSurface.position);
         payload.normal = normalize(hitSurface.normal);
-        payload.albedo = hitSurface.color;
-    }
-}
-
-
-
-void sunLightGi(SurfaceInfo surfaceInfo, float3 direction, float2 noise, inout float3 radiance)
-{
-    
-    const uint giSamples = 4;
-    GiHitPayload payload;
-  float3 giRadiance = float3(0.0,0.0,0.0);
-
-for(uint i = 0; i < giSamples; i++)
-{
-    
-    float2 Xi = frac(
-        noise +
-        float2(
-            i * 0.61803398875,
-            i * 0.38196601125));
-
-    float3 sampleDir =
-        CosineHemisphereSampling(
-            Xi,
-            surfaceInfo.normal);
-
-    RayDesc bounceRay;
-
-    bounceRay.Origin =
-        surfaceInfo.position +
-        1.0e-4 * surfaceInfo.normal ;
-
-    bounceRay.Direction = sampleDir;
-    bounceRay.TMin = 0.00;
-    bounceRay.TMax = 10000.0;
-
-    GiHitPayload payload;
-
-    TraceGiBounce(
-        bounceRay,
-        payload);
-
-        if (dot(payload.normal, -sampleDir) <= 0)
-    continue;
-    
-    if(payload.hit)
-    {
-        SurfaceInfo bounceSurface;
-
-        bounceSurface.position = payload.position;
-        bounceSurface.normal = payload.normal * 0.5 + 0.5;
+        payload.direction = ray.Direction;
+        payload.color = hitSurface.color;
+        payload.emission = hitSurface.emissive;
+        payload.roughness = hitSurface.roughness;
+        payload.metalness = hitSurface.metalness;
+        payload.alpha = hitSurface.alpha;
+        payload.transmission = transmission;
         
-        float3 shadowTransmission;
+    }
+    else {
 
-        getShadow(
-            bounceSurface,
-            direction,
-            noise,
-            shadowTransmission);
 
-        float ndotl =
-            saturate(
-                dot(payload.normal,
-                    direction));
+  
 
-        giRadiance +=
-            payload.albedo *
-            shadowTransmission *
-            ndotl;
+        payload.hit = false;
+    
+        payload.position = 0;
+  
+        payload.normal =0;
+        payload.direction = ray.Direction;
+        payload.color = 0.0;
+        payload.emission = 0.0;
+        payload.roughness = 0.0;
+        payload.metalness = 0.0;
+        payload.alpha = 0.0;
+        payload.transmission = transmission;
     }
 }
-radiance +=
-    (giRadiance / float(giSamples));
-}
-    
-    
 
 
 #endif

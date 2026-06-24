@@ -34,7 +34,7 @@ void PrimaryCheckerboardRayGenInline(
     uint groupIndex: SV_GroupIndex,
     uint3 groupID: SV_GroupID)
 {
-    // *cricket noises*
+    
     // Note that g_rootConstant0 from AdaptiveDenoiserCalculateGradients pass is accessible here
     
 
@@ -46,10 +46,11 @@ void PrimaryCheckerboardRayGenInline(
     rayDesc.Origin = g_view.viewOriginSteveSpace;
     rayDesc.TMin = 0; rayDesc.TMax = 10000;
 
-    float hitDist; float3 objMotion;
-    float3 color = RenderRay(rayDesc, dispatchThreadID.xy, hitDist, objMotion);
+    float hitDist; float3 objMotion; float3 indirect;
+    float3 color = RenderRay(rayDesc, dispatchThreadID.xy, hitDist, objMotion, indirect);
 
     float2 motionVector = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist, objMotion);
+
 
     // Basic debug views for NaNs and Infinity
     #if 1
@@ -60,7 +61,10 @@ void PrimaryCheckerboardRayGenInline(
     #endif
 
     // The only 3 buffers necessary for upscaling support (e.g. DLSS)
-    outputBufferFinal[dispatchThreadID.xy] = float4(color, 1);
+    outputBufferIndirectDiffuse[dispatchThreadID.xy] = float4(indirect, 1.0);
+    outputBufferIndirectSpecular[dispatchThreadID.xy] = float4(color,0.0);
+   
     outputBufferMotionVectors[dispatchThreadID.xy] = motionVector;
     outputBufferReprojectedPathLength[dispatchThreadID.xy] = hitDist;
+    outputBufferPrimaryPathLength[dispatchThreadID.xy] = hitDist;
 }

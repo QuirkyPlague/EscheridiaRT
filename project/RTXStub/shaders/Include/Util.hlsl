@@ -26,6 +26,8 @@
 
 #include "Generated/Signature.hlsl"
 #include "Constants.hlsl"
+#include "settings.hlsl"
+
 
 // blueNoiseTexture is available as a Texture2DArray<float4> bound at t58.
 // The engine exposes it as a 256x256 array with 128 layers.
@@ -153,13 +155,29 @@ bool isMoonPrimaryLight() {
     return min(angleDiff, (2*PI)-angleDiff) > 0.001;
 }
 
+float3 rotateBySunAngle(float3 dir, bool inverse = false)
+{
+	float a = inverse ? -SUN_ZENITH : SUN_ZENITH;
+	float b = inverse ? -SUN_AZIMUTH : SUN_AZIMUTH;
+	float3x3 zenith = {
+		1.0, 0.0,     0.0,
+		0.0, cos(a), -sin(a),
+		0.0, sin(a),  cos(a),
+	};
+	float3x3 azimuth = {
+		 cos(b), 0.0,  sin(b),
+		 0.0,    1.0,  0.0,
+		-sin(b), 0.0,  cos(b),
+	};
+	return inverse ? mul(zenith, mul(azimuth, dir)) : mul(azimuth, mul(zenith, dir));
+}
 
 float3 getTrueDirectionToSun() {
-    return isMoonPrimaryLight() ? -g_view.directionToSun : g_view.directionToSun;
+    return isMoonPrimaryLight() ?  rotateBySunAngle(-g_view.directionToSun) : rotateBySunAngle(g_view.directionToSun);
 }
 
 float3 getTrueDirectionToMoon() {
-    return isMoonPrimaryLight() ? g_view.directionToSun : -g_view.directionToSun;
+    return isMoonPrimaryLight() ?  rotateBySunAngle(g_view.directionToSun):  rotateBySunAngle(-g_view.directionToSun);
 }
 
 float getTime() {
@@ -187,6 +205,32 @@ float3 CosineHemisphereSampling(float2 Xi, float3 N)
         sqrt(1.0 - Xi.x) * N);
 }
 
+
+
+
+float3 getDirectionToSun()
+{
+   
+
+    if (SUN_AZIMUTH == 0.0 && SUN_ZENITH == 0.0)
+    {
+        return g_view.directionToSun;
+    }
+    return rotateBySunAngle(g_view.directionToSun);
+
+}
+float3 getUnderwaterDirectionToSun()
+{
+   
+
+    if (SUN_AZIMUTH == 0.0 && SUN_ZENITH == 0.0)
+    {
+        return g_view.underwaterDirectionToSun;
+    }
+    return rotateBySunAngle(g_view.underwaterDirectionToSun);
+
+}
+
 float4 getMediaExtinction(int medium) {
 
     return g_view.mediaExtinction[medium];
@@ -209,5 +253,16 @@ float3 getMediaPrimaryExtinction()
 float3 calcTransmittance(float distance, float3 extinction)
 {
 	return exp(-extinction * distance);
+}
+float calcDensityModifier(in float3 position)
+{
+	float densityModifier = 1;
+	if (!g_view.cameraIsUnderWater)
+	{
+        // We only use height fog when the camera is in the air
+        densityModifier = saturate(mad(position.y, g_view.heightToFogScale, g_view.heightToFogBias));
+		
+	}
+	return densityModifier;
 }
 #endif
