@@ -8,8 +8,7 @@ void TemporalDenoising(
     uint3 groupID : SV_GroupID
     )
 {
-      uint shadowDenoisingInputBufferIndex = (g_rootConstant0 >> 8) & 0xff;
+    // Use these for indexing shadowDenoisingInputs[] or shadowDenoisingOutputs[] arrays
+    uint shadowDenoisingInputBufferIndex = (g_rootConstant0 >> 8) & 0xff;
     uint shadowDenoisingOutputBufferIndex = (g_rootConstant0 >> 16) & 0xff;
-    
-    
 }

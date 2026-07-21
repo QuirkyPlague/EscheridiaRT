@@ -188,7 +188,7 @@ float getTime() {
 
 float3 CosineHemisphereSampling(float2 Xi, float3 N)
 {
-    float r = sqrt(Xi.x);
+    float r =   sqrt(Xi.x);
     float theta = 2.0 * PI * Xi.y;
 
     float3 T = normalize(cross(
@@ -205,6 +205,24 @@ float3 CosineHemisphereSampling(float2 Xi, float3 N)
         sqrt(1.0 - Xi.x) * N);
 }
 
+float3 CosineHemisphereSamplingSun(float2 Xi, float3 N)
+{
+    float r =  0.008 * sqrt(Xi.x);
+    float theta = 2.0 * PI * Xi.y;
+
+    float3 T = normalize(cross(
+        abs(N.z) < 0.999 ?
+        float3(0,0,1) :
+        float3(1,0,0),
+        N));
+
+    float3 B = cross(N, T);
+
+    return normalize(
+        r * cos(theta) * T +
+        r * sin(theta) * B +
+        sqrt(1.0 - Xi.x) * N);
+}
 
 
 
@@ -264,5 +282,28 @@ float calcDensityModifier(in float3 position)
 		
 	}
 	return densityModifier;
+}
+
+float3 offset_ray(const float3 p, const float3 n)
+{
+    static const float origin = 1.0f / 32.0f;
+    static const float float_scale = 1.0f / 65536.0f;
+    static const float int_scale = 256.0f;
+
+    int3 of_i = int3(int_scale * n.x, int_scale * n.y, int_scale * n.z);
+
+    float3 p_i = float3(
+        asfloat(asint(p.x) + ((p.x < 0) ? -of_i.x : of_i.x)),
+        asfloat(asint(p.y) + ((p.y < 0) ? -of_i.y : of_i.y)),
+        asfloat(asint(p.z) + ((p.z < 0) ? -of_i.z : of_i.z)));
+
+    return float3(abs(p.x) < origin ? p.x + float_scale * n.x : p_i.x,
+        abs(p.y) < origin ? p.y + float_scale * n.y : p_i.y,
+        abs(p.z) < origin ? p.z + float_scale * n.z : p_i.z);
+
+}
+
+float PDF_CosineHemisphere(float NdotL) {
+    return max(0.0, NdotL) / PI;
 }
 #endif

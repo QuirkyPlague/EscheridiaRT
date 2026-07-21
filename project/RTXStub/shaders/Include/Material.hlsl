@@ -542,20 +542,7 @@ SurfaceInfo MaterialVanilla(HitInfo hitInfo, GeometryInfo geometryInfo, ObjectIn
                 texNormal = normalize(texNormal);
             }
             // TODO: in the future make normal computations relative to vertex normal (doesn't make sense to do it now since entities have no PBR textures and blocks have no vertex normals).
-            float3 worldGeomNormal =
-    normalize(
-        mul(
-            geometryInfo.geometryNormal,
-            (float3x3)objectInstance.modelToWorld));
-
-surfaceInfo.normal =
-    normalize(
-        mul(
-            texNormal,
-            float3x3(
-                tangent,
-                bitangent,
-                geometryInfo.geometryNormal)));
+            surfaceInfo.normal = mul(texNormal, float3x3(tangent, bitangent, geometryInfo.geometryNormal));
         }
     }
 
@@ -564,10 +551,6 @@ surfaceInfo.normal =
 
     surfaceInfo.color = color.rgb;
     surfaceInfo.alpha = color.a;
-    #if WHITE_WORLD == 1
-     surfaceInfo.color = 1.0;
-     #endif
-
     return surfaceInfo;
 }
 

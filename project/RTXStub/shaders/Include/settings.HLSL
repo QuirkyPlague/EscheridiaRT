@@ -45,10 +45,10 @@
 #define MAX_FOG_DISTANCE 650
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 0.85)
-#define NOON_SUN_COLOR float4(1.0,0.95,0.85, 0.75)
-#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 0.881)
-#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.4415)
+#define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 4.85)
+#define NOON_SUN_COLOR float4(1.0,0.95,0.85, 4.75)
+#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 4.881)
+#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 2.4415)
 
 //sky intensity multipliers
 
