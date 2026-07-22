@@ -75,7 +75,7 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload)
         else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
-            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb) * 6;
+            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb);
             float caustics = 1.0;
 
             caustics = (calcWaterCaustics(mad(getUnderwaterDirectionToSun(), hitInfo.rayT, ray.Origin), hitInfo.rayT));

@@ -51,7 +51,16 @@ void PrimaryCheckerboardRayGenInline(
         
              
      color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy);
-    
+
+     float4 blueNoise = GetBlueNoiseValue(dispatchThreadID.xy);
+      float3 sunDir =  getDirectionToSun();
+    float3 moonDir = -sunDir;
+
+    float sunFade = saturate(sunDir.y);
+    float moonFade = saturate(moonDir.y);
+
+    float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
+    float dist = length(g_view.viewOriginSteveSpace);
    
     
         
