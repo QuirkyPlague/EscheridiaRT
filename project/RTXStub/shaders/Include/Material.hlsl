@@ -550,6 +550,7 @@ SurfaceInfo MaterialVanilla(HitInfo hitInfo, GeometryInfo geometryInfo, ObjectIn
     if (!hitInfo.frontFacing) surfaceInfo.normal = -surfaceInfo.normal;
 
     surfaceInfo.color = color.rgb;
+     surfaceInfo.color = pow(surfaceInfo.color, 2.2);
     surfaceInfo.alpha = color.a;
     return surfaceInfo;
 }

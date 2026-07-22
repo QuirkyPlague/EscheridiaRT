@@ -49,7 +49,7 @@ void CopyToFinal(
     } else {
         color = outputBufferFinal[dispatchThreadID.xy];
             color.rgb = tonemapAgX(color.rgb);
-    //color.rgb = pow(color.rgb, 1.0/2.2); // Gamma correction.
+    color.rgb = pow(color.rgb, 1.0/2.2); // Gamma correction.
     outputBufferFinal[dispatchThreadID.xy] = color;
     }
 }

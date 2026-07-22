@@ -22,7 +22,7 @@
  */
 
 // If enabled, will match vanilla graphics and cull transparent back faces. Refer to Renderer.hlsl to see what it does.
-#define CULL_GLASS_BACK_FACES 1
+#define CULL_GLASS_BACK_FACES 0
 
 #include "Include/Renderer.hlsl"
 #include "Include/Util.hlsl"
@@ -36,24 +36,27 @@ void PrimaryCheckerboardRayGenInline(
 {
     // *cricket noises*
     // Note that g_rootConstant0 from AdaptiveDenoiserCalculateGradients pass is accessible here
-    int totalRayCount = 4;
+    int totalRayCount = 24;
 
     // Below is an implementation of a basic ray traced vanilla-like shader.
     if (any(dispatchThreadID.xy >= g_view.renderResolution)) return;
     float hitDist; float3 objMotion; float3 color; float2 motionVector;
     
    
-      RayDesc rayDesc;
+     RayDesc rayDesc;
     rayDesc.Direction = rayDirFromNDC(getNDCjittered(dispatchThreadID.xy));
     rayDesc.Origin = g_view.viewOriginSteveSpace;
     rayDesc.TMin = 0; rayDesc.TMax = 10000;
 
-    
-         color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy);
+        
+             
+     color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy);
     
    
-    motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist, objMotion);
-
+    
+        
+        
+motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist, objMotion);
    
 
     // Basic debug views for NaNs and Infinity

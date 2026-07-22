@@ -207,7 +207,7 @@ float3 CosineHemisphereSampling(float2 Xi, float3 N)
 
 float3 CosineHemisphereSamplingSun(float2 Xi, float3 N)
 {
-    float r =  0.008 * sqrt(Xi.x);
+    float r =  SUN_RADIUS * sqrt(Xi.x);
     float theta = 2.0 * PI * Xi.y;
 
     float3 T = normalize(cross(
@@ -303,7 +303,5 @@ float3 offset_ray(const float3 p, const float3 n)
 
 }
 
-float PDF_CosineHemisphere(float NdotL) {
-    return max(0.0, NdotL) / PI;
-}
+
 #endif

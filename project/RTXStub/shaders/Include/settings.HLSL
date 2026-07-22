@@ -11,10 +11,12 @@
 
 #define WHITE_WORLD 0
 
-#define SUN_RADIUS   0.008
-#define SUN_INTENSITY 2.96
+#define RAY_COUNT 24
+
+#define SUN_RADIUS   0.004
+#define SUN_INTENSITY 1.96
 #define SUN_SHADOW_SAMPLES 1
-#define CLOUD_SHADOW_OPACITY 0.516
+#define CLOUD_SHADOW_OPACITY 0.316
 
 //Allows reading of resource pack fog values to determine shadow opacity
 #define DO_RP_CLOUD_OPACITY 0
@@ -45,10 +47,10 @@
 #define MAX_FOG_DISTANCE 650
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 4.85)
-#define NOON_SUN_COLOR float4(1.0,0.95,0.85, 4.75)
-#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 4.881)
-#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 2.4415)
+#define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 1.85)
+#define NOON_SUN_COLOR float4(1.0,0.95,0.85, 1.75)
+#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 1.881)
+#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.6415)
 
 //sky intensity multipliers
 
@@ -66,8 +68,8 @@
 //sky horizon colors
 #define DAY_HORIZON_COL                float3(0.4453, 0.8176, 1.0)
 #define NOON_HORIZON_COL               float3(0.4453, 0.8176, 1.0)
-#define SUNRISE_HORIZON_COL            float3(0.9827, 0.5302, 0.3941)
-#define SUNSET_HORIZON_COL             float3(0.8784, 0.3451, 0.1359)
+#define SUNRISE_HORIZON_COL            float3(1.1827, 0.5302, 0.2541)
+#define SUNSET_HORIZON_COL             float3(1.1784, 0.3451, 0.1359)
 #define NIGHT_HORIZON_COL              float3(0.0559, 0.1169, 0.2114)
 
 //sky ground colors
@@ -102,14 +104,14 @@
 #define USE_TEXTURE_CAUSTICS  0
 
 #define WAVE_SMOOTHING                                      (0.2313)
-#define WAVE_INTENSITY                                      (0.0752)
+#define WAVE_INTENSITY                                      (0.1252)
 #define WAVE_FREQUENCY                                      (2.1)
 #define WAVE_OCTAVES                                        (14)
 #define WAVE_SPEED                                          (3.0)
 #define WAVE_RANDOMNESS                                     (0.45)
 #define WAVE_OCTAVE_FREQUENCY                               (1.21)
-#define WAVE_OCTAVE_SPEED                                   (1.14)
-#define WAVE_OCTAVE_MIX_WEIGHT                              (0.332)
-#define WAVE_PULL                                           (-0.34235)
+#define WAVE_OCTAVE_SPEED                                   (1.16)
+#define WAVE_OCTAVE_MIX_WEIGHT                              (0.282)
+#define WAVE_PULL                                           (0.34235)
 
 #endif // SETTINGS_HLSL

@@ -5,6 +5,8 @@
 #include "Constants.hlsl"
 #include "settings.hlsl"
 #include "Material.hlsl"
+#include "water.hlsl"
+
 
 // Set to false by default
 #ifndef CULL_GLASS_BACK_FACES
@@ -73,12 +75,16 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload)
         else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
-            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb);
-           
-            transmission *= waterExtinction;
+            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb) * 6;
+            float caustics = 1.0;
+
+            caustics = (calcWaterCaustics(mad(getUnderwaterDirectionToSun(), hitInfo.rayT, ray.Origin), hitInfo.rayT));
+
+
+            transmission *= waterExtinction * caustics;
 
             if (!any(transmission))
-            q.CommitNonOpaqueTriangleHit();
+                q.CommitNonOpaqueTriangleHit();
         }
         else {
             q.CommitNonOpaqueTriangleHit();
@@ -128,18 +134,24 @@ void castTransmissionRay(in RayDesc ray, out TransmissionPayload payload) {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
 
-            float alphablend = 1 - surfaceInfo.alpha;
-            transmission *= lerp(surfaceInfo.color, 0..xxx, surfaceInfo.alpha) * alphablend;
-          
+            // Preserve glass absorption by tinting transmission with surface color.
+            transmission *= surfaceInfo.color * surfaceInfo.alpha;
 
             if (!any(transmission))
             {
                  query.CommitNonOpaqueTriangleHit();
-                
             }
-           
         }
-        else
+        else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
+            GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
+            SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
+            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb) * 6;
+            transmission *= waterExtinction;
+
+            if (!any(transmission))
+                query.CommitNonOpaqueTriangleHit();
+        }
+        else 
         {
              query.CommitNonOpaqueTriangleHit();
         }
