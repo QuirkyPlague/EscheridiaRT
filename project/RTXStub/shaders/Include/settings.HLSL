@@ -103,15 +103,15 @@
 //1 = Approximated caustics off water normal
 #define USE_TEXTURE_CAUSTICS  0
 
-#define WAVE_SMOOTHING                                      (0.2313)
+#define WAVE_SMOOTHING                                      (0.0313)
 #define WAVE_INTENSITY                                      (0.1252)
-#define WAVE_FREQUENCY                                      (2.1)
+#define WAVE_FREQUENCY                                      (1.4)
 #define WAVE_OCTAVES                                        (14)
 #define WAVE_SPEED                                          (3.0)
 #define WAVE_RANDOMNESS                                     (0.45)
-#define WAVE_OCTAVE_FREQUENCY                               (1.21)
+#define WAVE_OCTAVE_FREQUENCY                               (1.24)
 #define WAVE_OCTAVE_SPEED                                   (1.16)
 #define WAVE_OCTAVE_MIX_WEIGHT                              (0.282)
-#define WAVE_PULL                                           (0.34235)
+#define WAVE_PULL                                           (0.54235)
 
 #endif // SETTINGS_HLSL

@@ -6,7 +6,7 @@
 #include "settings.hlsl"
 #include "Material.hlsl"
 #include "water.hlsl"
-
+#include "brdf.hlsl"
 
 // Set to false by default
 #ifndef CULL_GLASS_BACK_FACES
@@ -65,8 +65,50 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload)
         else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !isCloud) {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
+            
+           
+             float etaI = 1.0;
+    float etaT =  1.5;
+    float3 N = surfaceInfo.normal;
+           float3  direction = ray.Direction;
+            float3 F0 = lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness);
+    float3 Fv = fresnelSchlick(max(dot(N, -direction), 0.0), F0);
 
+            float3 nextDirection;
+    float specularProbability =
+    saturate(max(max(Fv.r, Fv.g), Fv.b));
 
+specularProbability = max(specularProbability, 0.04);
+
+// Metals always use the specular lobe.
+specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
+    float3 Nrefract = N;
+    float eta = etaI / etaT;
+    bool entering = dot(direction, geometryInfo.geometryNormal) < 0.0;
+    // Leaving water
+    if (dot(direction, N) > 0.0)
+    {
+        eta = etaT / etaI;
+        Nrefract = -N;
+    }
+
+    float3 refracted = refract(direction, Nrefract, eta);
+
+    // Total internal reflection
+    if (dot(refracted, refracted) < 1e-8)
+    {
+        
+        nextDirection = reflect(direction, N);
+    }
+    else
+    {
+        nextDirection = refracted;
+    }
+
+    float3 transmissionWeight = 1.0 - Fv;
+    float transmissionProbability = max(1.0 - specularProbability, 1e-4);
+
+    transmission *= transmissionWeight / transmissionProbability;
             transmission *= lerp(surfaceInfo.color, 0..xxx, surfaceInfo.alpha);
 
             if (!any(transmission))
@@ -75,7 +117,7 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload)
         else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
-            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb);
+            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb) * 0.25;
             float caustics = 1.0;
 
             caustics = (calcWaterCaustics(mad(getUnderwaterDirectionToSun(), hitInfo.rayT, ray.Origin), hitInfo.rayT));

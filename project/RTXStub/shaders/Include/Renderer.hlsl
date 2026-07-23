@@ -135,8 +135,9 @@ void RenderVanilla(HitInfo hitInfo, inout RayState rayState, in float4 noise, in
     float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
 
     if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
-        surfaceInfo.roughness = 1e-4;
-        surfaceInfo.color = 0.0;
+        surfaceInfo.roughness = 0;
+        //surfaceInfo.alpha = 0.0;
+        surfaceInfo.color = inWater ? 0.0  : 0.0;
         const float waveSmoothness = WAVE_SMOOTHING;
                 const float waveStrength = WAVE_INTENSITY;
                 float3 worldPos = surfaceInfo.position - g_view.waveWorksOriginInSteveSpace;
@@ -219,7 +220,7 @@ rayColor *= weight_r;
 {
     // Air <-> water IOR
     float etaI = 1.0;
-    float etaT = 1.333;
+    float etaT = isWater ? 1.333 : 1.5;
 
     float3 Nrefract = N;
     float eta = etaI / etaT;
@@ -236,11 +237,12 @@ rayColor *= weight_r;
     // Total internal reflection
     if (dot(refracted, refracted) < 1e-8)
     {
+        
         nextDirection = reflect(direction, N);
     }
     else
     {
-        nextDirection = normalize(refracted);
+        nextDirection = refracted;
     }
 
     float3 transmissionWeight = 1.0 - Fv;
@@ -322,13 +324,12 @@ rayColor *= weight_r;
     }
 
     // Apply emissive lighting.
-    float3 emission = surfaceInfo.color * surfaceInfo.emissive * 150;
+    float3 emission = surfaceInfo.color * surfaceInfo.emissive * 6550;
 
-    if (!isWater)
-{
-    totalRadiance += light;
-    totalRadiance *= kD * surfaceInfo.color;
-}
+   
+    totalRadiance += light * surfaceInfo.color;
+    
+
     totalRadiance += emission;
     uint mediaType = objectInstance.offsetPack5 >> 8; // See MEDIA_TYPE macros in Constants.hlsl.
 
@@ -351,11 +352,18 @@ float3 transmission = 1.0;
         transmission = surfaceInfo.color;
         totalRadiance = 0;
     }
-    else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) {
+    else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
         // Use alphablend for alpha-blended surfaces only and tint transmitted light.
         float transmitAmount = 1.0 - surfaceInfo.alpha;
         float3 glassTransmittance = lerp(float3(1.0, 1.0, 1.0), surfaceInfo.color, transmitAmount);
-        //totalRadiance *= glassTransmittance;
+        totalRadiance *= glassTransmittance;
+        //transmission =  glassTransmittance;
+    }
+    else if(hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) {
+        // Use alphablend for alpha-blended surfaces only and tint transmitted light.
+        float transmitAmount = 1.0 - surfaceInfo.alpha;
+        float3 glassTransmittance = lerp(float3(1.0, 1.0, 1.0), surfaceInfo.color, transmitAmount);
+        totalRadiance *= glassTransmittance;
         transmission *= lerp(surfaceInfo.color, 0.xxx, surfaceInfo.alpha);
     }
           
@@ -377,8 +385,6 @@ float3 transmission = 1.0;
 
 float3 RenderRay(RayDesc rayDesc, out float outputDistance, out float3 outputMotion, in float2 pixelPos)
 {
-   
-    
    
     RayQuery<RAY_FLAG_NONE> q;
     RayState rayState;

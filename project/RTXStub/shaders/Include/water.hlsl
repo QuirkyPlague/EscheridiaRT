@@ -21,7 +21,7 @@ float getwaves(float2 position, int iterations, float frameTimeCounter)
     float iter = 0.0f; // helps generate well-distributed wave directions
     float frequency = WAVE_FREQUENCY; // base frequency (modified per octave)
     float timeMultiplier = WAVE_SPEED; // base time multiplier (modified per octave)
-    float weight = 0.85f; // base weight (modified per octave)
+    float weight = 0.55f; // base weight (modified per octave)
     float sumOfValues = 0.0f;
     float sumOfWeights = 0.0f;
 
