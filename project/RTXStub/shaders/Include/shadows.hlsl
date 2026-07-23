@@ -108,7 +108,7 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
     float3 transmissionWeight = 1.0 - Fv;
     float transmissionProbability = max(1.0 - specularProbability, 1e-4);
 
-    transmission *= transmissionWeight / transmissionProbability;
+    //transmission *= transmissionWeight / transmissionProbability;
             transmission *= lerp(surfaceInfo.color, 0..xxx, surfaceInfo.alpha);
 
             if (!any(transmission))

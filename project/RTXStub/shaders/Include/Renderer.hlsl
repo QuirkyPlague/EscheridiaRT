@@ -218,37 +218,64 @@ rayColor *= weight_r;
         }
        else
 {
-    // Air <-> water IOR
-    float etaI = 1.0;
-    float etaT = isWater ? 1.333 : 1.5;
+// 1. Assign correct base IORs depending on material type
+float etaI = 1.0; // Air
+float etaT = 1.0;
 
-    float3 Nrefract = N;
-    float eta = etaI / etaT;
-    bool entering = dot(direction, geometryInfo.geometryNormal) < 0.0;
-    // Leaving water
-    if (dot(direction, N) > 0.0)
-    {
-        eta = etaT / etaI;
-        Nrefract = -N;
-    }
+if (isWater) {
+    etaT = 1.333;
+} else { // Handle regular translucent voxels from Image 1
+    etaT = 1.5;
+}
 
-    float3 refracted = refract(direction, Nrefract, eta);
+// 2. Use a stable, raw geometric normal check.
+// In Minecraft RTX, geometryNormal points OUT of the solid voxel face.
+float cos_theta_i = dot(direction, geometryInfo.geometryNormal);
 
-    // Total internal reflection
-    if (dot(refracted, refracted) < 1e-8)
-    {
-        
-        nextDirection = reflect(direction, N);
-    }
-    else
-    {
-        nextDirection = refracted;
-    }
+// If dot product is negative, ray is traveling AGAINST the outward normal (Entering)
+// If dot product is positive, ray is traveling WITH the outward normal (Leaving)
+bool leaving = cos_theta_i > 0.0;
 
-    float3 transmissionWeight = 1.0 - Fv;
-    float transmissionProbability = max(1.0 - specularProbability, 1e-4);
+float eta;
+float3 Nrefract;
 
-    rayColor *= transmissionWeight / transmissionProbability;
+if (leaving) {
+    // Ray is inside the voxel, exiting out into air
+    eta = etaT / etaI; 
+    
+    // Ensure Nrefract points strictly against the ray direction for the API refract() call
+
+    Nrefract =  (dot(direction, N) > 0.0) ? -N : N;
+} else {
+    // Ray is in the air, entering into the solid voxel
+    eta = etaI / etaT; 
+    
+    // Ensure Nrefract points strictly against the ray direction
+    Nrefract = (dot(direction, N) > 0.0) ? -N : N;
+}
+
+// 3. Perform the refraction
+float3 refracted = refract(direction, Nrefract, eta);
+
+// 4. Handle paths based on TIR success
+if (dot(refracted, refracted) < 1e-8) { 
+    // TOTAL INTERNAL REFLECTION (Only possible when leaving == true!)
+    nextDirection = reflect(direction, N);
+    
+    // Crucial: TIR reflects 100% of light. Do not apply transmissionWeight reduction here!
+    float TIR_probability = max(specularProbability, 1e-4); 
+    rayColor *= 1.0 / TIR_probability; 
+} 
+else { 
+    // REGULAR REFRACTION / TRANSMISSION (Glass becomes clear, Water lets you see inside)
+    nextDirection = refracted; 
+    
+    // Compute your standard Fresnel blend for rays that successfully cross the boundary
+    float3 transmissionWeight = 1.0 - Fv; 
+    float transmissionProbability = max(1.0 - specularProbability, 1e-4); 
+    
+    rayColor *= transmissionWeight / transmissionProbability; 
+}
 }
     }
     else if (Xi.x < specularProbability)
