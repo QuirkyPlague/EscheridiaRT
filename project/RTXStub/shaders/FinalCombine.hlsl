@@ -16,5 +16,5 @@ void FinalCombine(
     uint shadowDenoisingBufferIndex = (g_rootConstant0 >> 16) & 0xff;
 
     float4 diffuse = outputBufferIndirectDiffuse[dispatchThreadID.xy];
-    //outputBufferFinal[dispatchThreadID.xy] = float4(diffuse.rgb, 1.0);
+    outputBufferFinal[dispatchThreadID.xy] = float4(diffuse.rgb, 1.0);
 }

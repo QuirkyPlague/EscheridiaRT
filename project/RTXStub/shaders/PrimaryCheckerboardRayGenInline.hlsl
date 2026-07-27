@@ -77,7 +77,7 @@ motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist
     #endif
 
     // The only 3 buffers necessary for upscaling support (e.g. DLSS)
-    outputBufferFinal[dispatchThreadID.xy] = float4(color, 1);
+    outputBufferIndirectDiffuse[dispatchThreadID.xy] = float4(color, 1);
     outputBufferMotionVectors[dispatchThreadID.xy] = motionVector;
     outputBufferReprojectedPathLength[dispatchThreadID.xy] = hitDist;
 }

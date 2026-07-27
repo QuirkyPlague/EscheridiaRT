@@ -152,51 +152,25 @@ float3 BRDF1(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, flo
 }
 
 //from Zombye
-float3 SampleVNDFGGX(
-    float3 viewerDirection, // Direction towards viewer, +Z = surface normal
-    float2 alpha,           // Roughness along X and Y
-    float2 xy               // Uniform random numbers in [0,1)
-)
-{
-    alpha = max(alpha, 0.001);
+float3 SampleVNDFGGX(float3 V, float alpha, float2 u) {
+    float3 Vh = safeNormalize(float3(alpha * V.x, alpha * V.y, V.z), float3(0, 0, 1));
 
-    // Transform view direction into hemisphere configuration
-    viewerDirection = normalize(
-        float3(
-            alpha.x * viewerDirection.x,
-            alpha.y * viewerDirection.y,
-            viewerDirection.z
-        )
-    );
+    float lengthSq = Vh.x * Vh.x + Vh.y * Vh.y;
+    float3 tangent = lengthSq > 0 ? float3(-Vh.y, Vh.x, 0) / sqrt(lengthSq) : float3(1, 0, 0);
+    float3 bitangent = cross(Vh, tangent);
 
-    const float TAU = 6.28318530718f;
+    float r = sqrt(u.x);
+    float phi = 2.0 * PI * u.y;
+    float t1 = r * cos(phi);
+    float t2 = r * sin(phi);
+    float s = 0.5 * (1.0 + Vh.z);
+    t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
 
-    // Sample a reflection direction on the hemisphere
-    float phi = TAU * xy.x;
+    float3 Nh = t1 * tangent
+        + t2 * bitangent
+        + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
 
-    float cosTheta =
-        (1.0f - xy.y) * (1.0f + viewerDirection.z)
-        - viewerDirection.z;
-
-    float sinTheta = sqrt(saturate(1.0f - cosTheta * cosTheta));
-
-    float3 reflected = float3(
-        cos(phi) * sinTheta,
-        sin(phi) * sinTheta,
-        cosTheta
-    );
-
-    // Half-vector in hemisphere space
-    float3 halfway = reflected + viewerDirection;
-
-    // Transform back to ellipsoid configuration
-    return normalize(
-        float3(
-            alpha.x * halfway.x,
-            alpha.y * halfway.y,
-            halfway.z
-        )
-    );
+    return safeNormalize(float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)), float3(0, 0, 1));
 }
 
 float3x3 tbnMatrix(float3 N) {
@@ -218,7 +192,7 @@ float3 skyReflection(float3 dir, float3 normal, SurfaceInfo surfaceInfo, float3 
   for (uint i = 0u; i < uint(4); i++) {
     float alpha = max(surfaceInfo.roughness * surfaceInfo.roughness, 0.001);
 
-    float3 microFacit = SampleVNDFGGX(tangentView, float2(alpha, alpha), noise.xy);
+    float3 microFacit = SampleVNDFGGX(tangentView, alpha, noise.xy);
     float3 tangentReflDir = reflect(-tangentView, microFacit);
     skyDir = normalize(mul(tangentReflDir, tbn));
 

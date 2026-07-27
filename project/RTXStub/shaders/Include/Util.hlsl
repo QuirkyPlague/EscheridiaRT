@@ -34,6 +34,20 @@
 static const uint kBlueNoiseTextureSize = 256;
 static const uint kBlueNoiseLayerCount = 128;
 
+// 32-bit PCG Hash function to completely decorrelate neighbor pixel random sequences
+uint PCG_Hash(uint3 v) {
+    v = v * 1664525u + 1013904223u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    return v.x;
+}
+
+// Convert an unsigned integer hash smoothly into a pseudo-random float [0, 1)
+float HashToFloat(uint hash) {
+    return float(hash & 0x00ffffffu) / float(0x01000000u);
+}
+
 float4 SampleBlueNoise(uint2 pixelCoord, uint layerIndex) {
     layerIndex %= kBlueNoiseLayerCount;
     float2 uv = (pixelCoord + 0.5) / float2(kBlueNoiseTextureSize, kBlueNoiseTextureSize);
@@ -41,9 +55,10 @@ float4 SampleBlueNoise(uint2 pixelCoord, uint layerIndex) {
 }
 
 float4 LoadBlueNoise(uint2 texelCoord, uint layerIndex) {
-    layerIndex %= kBlueNoiseLayerCount;
-    uint2 clampedCoord = texelCoord % kBlueNoiseTextureSize;
-    return blueNoiseTexture[uint3(clampedCoord, layerIndex)];
+     uint3 noiseCoord = uint3(
+        texelCoord % uint2(256, 256),
+        g_view.frameCount % 128);
+    return blueNoiseTexture.Load(uint4(noiseCoord, 0));
 }
 
 uint3 getDispatchDimensions() {
@@ -89,6 +104,11 @@ bool isUpscalingEnabled() {
 float2 getNDCjittered(uint2 pixelCoord) {
     float2 ndc = g_view.recipRenderResolution * (pixelCoord + 0.5 + (isUpscalingEnabled() ? g_view.subPixelJitter : 0));
     return mad(ndc, float2(2, -2), float2(-1, 1));
+}
+
+float3 safeNormalize(float3 v, float3 fallback) {
+    float lenSq = dot(v, v);
+    return lenSq > 1.0e-12 ? v * rsqrt(lenSq) : fallback;
 }
 
 float4 unpackNormal(uint packedNormal) {
@@ -186,23 +206,18 @@ float getTime() {
     return time < 0 ? time + 1 : time;
 }
 
-float3 CosineHemisphereSampling(float2 Xi, float3 N)
-{
-    float r =   sqrt(Xi.x);
-    float theta = 2.0 * PI * Xi.y;
+float3 CosineHemisphereSampling(float2 u, float3 n) {
+    float r = sqrt(u.x);
+    float theta = 2.0 * PI * u.y;
 
-    float3 T = normalize(cross(
-        abs(N.z) < 0.999 ?
-        float3(0,0,1) :
-        float3(1,0,0),
-        N));
+    float3 p = float3(r * cos(theta), r * sin(theta), sqrt(max(0.0, 1.0 - u.x)));
+    n = safeNormalize(n, float3(0, 1, 0));
 
-    float3 B = cross(N, T);
+    float3 up = abs(n.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
+    float3 t = safeNormalize(cross(up, n), float3(1, 0, 0));
+    float3 b = cross(n, t);
 
-    return normalize(
-        r * cos(theta) * T +
-        r * sin(theta) * B +
-        sqrt(1.0 - Xi.x) * N);
+    return safeNormalize(p.x * t + p.y * b + p.z * n, n);
 }
 
 float3 SampleSunDirection(float2 Xi, float3 sunDir)
