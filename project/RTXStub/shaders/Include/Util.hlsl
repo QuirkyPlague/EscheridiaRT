@@ -205,26 +205,38 @@ float3 CosineHemisphereSampling(float2 Xi, float3 N)
         sqrt(1.0 - Xi.x) * N);
 }
 
-float3 CosineHemisphereSamplingSun(float2 Xi, float3 N)
+float3 SampleSunDirection(float2 Xi, float3 sunDir)
 {
-    float r =  SUN_RADIUS * sqrt(Xi.x);
-    float theta = 2.0 * PI * Xi.y;
+    float thetaMax = SUN_RADIUS; // radians
+
+    float cosThetaMax = cos(thetaMax);
+
+    // Uniform sample on the cone
+    float cosTheta = lerp(cosThetaMax, 1.0, Xi.x);
+    float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+    float phi = 2.0 * PI * Xi.y;
 
     float3 T = normalize(cross(
-        abs(N.z) < 0.999 ?
+        abs(sunDir.z) < 0.999 ?
         float3(0,0,1) :
         float3(1,0,0),
-        N));
+        sunDir));
 
-    float3 B = cross(N, T);
+    float3 B = cross(sunDir, T);
 
     return normalize(
-        r * cos(theta) * T +
-        r * sin(theta) * B +
-        sqrt(1.0 - Xi.x) * N);
+        cos(phi) * sinTheta * T +
+        sin(phi) * sinTheta * B +
+        cosTheta * sunDir);
 }
 
+float PDF_SunCone()
+{
+    float cosThetaMax = cos(SUN_RADIUS);
 
+    return 1.0 /
+        (2.0 * PI * (1.0 - cosThetaMax));
+}
 
 float3 getDirectionToSun()
 {

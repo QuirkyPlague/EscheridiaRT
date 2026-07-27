@@ -267,7 +267,7 @@ float3 getSun(float3 dir) {
     sun *
     limbDarkening *
     sunColor *
-    350.0 *
+    35000.0 *
     sunHeightFactor;
     float moon = smoothstep(
         0.0002 * 0.86,
@@ -289,7 +289,7 @@ float3 skyScattering1(float3 pos) {
     float3 moonDir = getTrueDirectionToMoon();
 
     float VoL = dot(dir, sunDir);
-    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 17;
+    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 25;
 
     float upPos = saturate(dir.y);
     float downPos = clamp(dir.y, -1.0, 0.0);
@@ -432,11 +432,11 @@ float3 skyScattering1(float3 pos) {
 
     float3 sun = getSun(dir);
 
-    float3 color = sky + finalMie + sun;
+    float3 color = sky + finalMie;
     float skyLuminance = dot(color, 1.0);
     color = pow(color, 1.5);
     color *= skyLuminance / dot(color, 1.0);
-    return color;
+    return color + sun;
 }
 
 #endif // SKY_HLSL

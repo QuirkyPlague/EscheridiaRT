@@ -38,8 +38,7 @@ float waterPhase(float cosTheta) {
 void VL_FOG(float3 pos, float3 dir, float3 noise, float hitDist, float3 lightDir,  inout float3 color) {
     //calculate steps and distance
     const int volumetricSteps = VL_FOG_STEPS;
-    dir = normalize(dir);
-    float maxDist = min(hitDist, 600);
+    float maxDist = min(hitDist, MAX_FOG_DISTANCE);
 
     float stepSize = maxDist / (float)volumetricSteps;
 
@@ -90,14 +89,15 @@ void VL_FOG(float3 pos, float3 dir, float3 noise, float hitDist, float3 lightDir
             disk.x * T +
             disk.y * B);
 
-       shadowPayload payload;
-    RayDesc shadowRay;
-    shadowRay.Origin = offset_ray(rayPos, float3(0.0,1.0,0.0));
-    shadowRay.Direction = CosineHemisphereSamplingSun(Xi, lightDir);
-    shadowRay.TMin = 0.0;
-    shadowRay.TMax = 10000;
+        RayDesc shadowRay;
+        shadowRay.Origin = rayPos + 1.0e-3 * float3(0,1,0);
 
-    TraceShadowRay(shadowRay, payload);
+        shadowRay.Direction = sampleDir;
+        shadowRay.TMin = 0.0;
+        shadowRay.TMax = 10000.0;
+
+        shadowPayload payload;
+        TraceShadowRay(shadowRay, payload);
 
         float3 shadow = payload.transmission;
 

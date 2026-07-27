@@ -40,7 +40,7 @@ void PrimaryCheckerboardRayGenInline(
 
     // Below is an implementation of a basic ray traced vanilla-like shader.
     if (any(dispatchThreadID.xy >= g_view.renderResolution)) return;
-    float hitDist; float3 objMotion; float3 color; float2 motionVector;
+    float hitDist; float3 objMotion; float3 color; float2 motionVector; float firstHitDist;
     
    
      RayDesc rayDesc;
@@ -50,7 +50,7 @@ void PrimaryCheckerboardRayGenInline(
 
         
              
-     color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy);
+     color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy, firstHitDist);
 
      float4 blueNoise = GetBlueNoiseValue(dispatchThreadID.xy);
       float3 sunDir =  getDirectionToSun();
@@ -63,7 +63,7 @@ void PrimaryCheckerboardRayGenInline(
     float dist = length(g_view.viewOriginSteveSpace);
    
     
-        
+    
         
 motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist, objMotion);
    

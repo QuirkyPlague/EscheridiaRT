@@ -4,9 +4,9 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Compile BetterRTX",
+            "label": "Build Escheridia RT",
             "type": "shell",
-            "command": "lazurite build project/ -o ./",
+            "command": "lazurite build project/ -o output",
             "presentation": {
                 "showReuseMessage": false,
                 "clear": true,

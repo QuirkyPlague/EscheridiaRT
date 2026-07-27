@@ -341,12 +341,14 @@ float G_SchlickGGX(float NdotV, float roughness) {
     return num / denom;
 }
 
-// PDF for GGX VNDF sampling of the half vector
-float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
+float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness)
+{
     float D = D_GGX(NdotH, roughness);
     float G1 = G_SchlickGGX(NdotV, roughness);
 
-    return (D * G1 * max(0.0, VdotH)) / max(NdotV, 0.00001);
+    float pdfH = (D * G1 * max(VdotH, 0.0)) / max(NdotV, 1e-6);
+
+    return pdfH / max(4.0 * VdotH, 1e-6);
 }
 
 // PDF for standard GGX reflection

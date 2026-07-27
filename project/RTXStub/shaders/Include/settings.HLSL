@@ -13,7 +13,7 @@
 
 #define RAY_COUNT 24
 
-#define SUN_RADIUS   0.004
+#define SUN_RADIUS   0.005
 #define SUN_INTENSITY 1.96
 #define SUN_SHADOW_SAMPLES 1
 #define CLOUD_SHADOW_OPACITY 0.316
@@ -47,10 +47,10 @@
 #define MAX_FOG_DISTANCE 650
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 1.85)
-#define NOON_SUN_COLOR float4(1.0,0.95,0.85, 1.75)
-#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 1.881)
-#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.6415)
+#define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 1.8)
+#define NOON_SUN_COLOR float4(1.0,0.95,0.85, 1.15)
+#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 1.3)
+#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.1)
 
 //sky intensity multipliers
 
@@ -105,13 +105,13 @@
 
 #define WAVE_SMOOTHING                                      (0.0313)
 #define WAVE_INTENSITY                                      (0.1252)
-#define WAVE_FREQUENCY                                      (1.4)
-#define WAVE_OCTAVES                                        (14)
+#define WAVE_FREQUENCY                                      (1.14)
+#define WAVE_OCTAVES                                        (21)
 #define WAVE_SPEED                                          (3.0)
-#define WAVE_RANDOMNESS                                     (0.45)
-#define WAVE_OCTAVE_FREQUENCY                               (1.24)
-#define WAVE_OCTAVE_SPEED                                   (1.16)
-#define WAVE_OCTAVE_MIX_WEIGHT                              (0.282)
-#define WAVE_PULL                                           (0.54235)
+#define WAVE_RANDOMNESS                                     (0.1)
+#define WAVE_OCTAVE_FREQUENCY                               (1.18)
+#define WAVE_OCTAVE_SPEED                                   (1.11)
+#define WAVE_OCTAVE_MIX_WEIGHT                              (0.276)
+#define WAVE_PULL                                           (0.34235)
 
 #endif // SETTINGS_HLSL
