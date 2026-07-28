@@ -3,7 +3,9 @@
 
 #include "sky.hlsl"
 #include "shadows.hlsl"
-//Basic cook torrance
+
+#define BRDF_PI radians(180.0)
+
 
 float DistributionGGX(float3 N, float3 H, float roughness) {
   float r = max(roughness, 0.001);
@@ -315,25 +317,47 @@ float G_SchlickGGX(float NdotV, float roughness) {
     return num / denom;
 }
 
-float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness)
-{
-    float D = D_GGX(NdotH, roughness);
-    float G1 = G_SchlickGGX(NdotV, roughness);
-
-    float pdfH = (D * G1 * max(VdotH, 0.0)) / max(NdotV, 1e-6);
-
-    return pdfH / max(4.0 * VdotH, 1e-6);
+float G1_SmithGGX(float NdotV, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotV2 = NdotV * NdotV;
+    return (2.0 * NdotV) /
+        max(NdotV + sqrt(a2 + (1.0 - a2) * NdotV2), 0.00001);
 }
 
-// PDF for standard GGX reflection
+float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
+    float D = D_GGX(NdotH, roughness);
+    float G1 = G1_SmithGGX(NdotV, roughness);
+
+    return (D * G1 * max(0.0, VdotH)) / max(NdotV, 0.00001);
+}
+
 float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
-    // The PDF of the visible half vector is: D * G1 * max(0, VdotH) / NdotV
-    // To convert this to the PDF of the reflected direction, we divide by (4 * VdotH)
     return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
 }
 
 float PDF_CosineHemisphere(float NdotL) {
     return max(0.0, NdotL) / PI;
+}
+
+void BuildOrthonormalBasis(float3 N, out float3 T, out float3 B) {
+    N = safeNormalize(N, float3(0, 1, 0));
+    float3 up = abs(N.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
+    T = safeNormalize(cross(up, N), float3(1, 0, 0));
+    B = cross(N, T);
+}
+
+
+float3 SampleGGXMicrofacetNormal(float3 V, float3 N, float roughness, float2 u) {
+    float alpha = max(roughness * roughness, 0.001);
+
+    float3 T, B;
+    BuildOrthonormalBasis(N, T, B);
+
+    float3 Vlocal = float3(dot(V, T), dot(V, B), dot(V, N));
+    float3 Hlocal = SampleVNDFGGX(Vlocal, alpha, u);
+    float3 H = safeNormalize(Hlocal.x * T + Hlocal.y * B + Hlocal.z * N, N);
+    return dot(H, V) >= 0.0 ? H : -H;
 }
 
 float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {

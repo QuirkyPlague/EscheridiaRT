@@ -68,7 +68,7 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload)
             
 
             transmission *= lerp(surfaceInfo.color, 0..xxx, surfaceInfo.alpha);
-
+ continue;
            
         }
         else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
@@ -82,7 +82,7 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload)
 
             transmission *= waterExtinction * caustics;
 
-       
+        continue;
         }
         else {
             q.CommitNonOpaqueTriangleHit();

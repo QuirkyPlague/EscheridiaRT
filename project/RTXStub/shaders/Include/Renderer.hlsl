@@ -167,7 +167,7 @@
 
         if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
             surfaceInfo.roughness =  0.0 ;
-            surfaceInfo.alpha = 0.f;
+            //surfaceInfo.alpha = 0.f;
             surfaceInfo.color = 0;
             const float waveSmoothness = WAVE_SMOOTHING;
             const float waveStrength = WAVE_INTENSITY;
@@ -191,7 +191,7 @@
 
         rayState.rayDesc.TMin = 0.00;
         bool didReflect = false;
-        float3 direction = normalize(rayState.rayDesc.Direction);
+        float3 direction = rayState.rayDesc.Direction;
         float3 nextDirection;
         float3 N = surfaceInfo.normal;
         float3 V = -direction;
@@ -208,7 +208,7 @@
     // --- PROBABILITY 1: Macro-Boundary Fresnel (Using N) for Transparency Choice ---
     float3 F_boundary = fresnelSchlick(NdotV1, F0);
     // Use the boundary reflection energy to dictate if we reflect off the shell or pass through
-    float transparencyReflectProbability = clamp(luminance(F_boundary), 0.10f, 0.90f);
+    float transparencyReflectProbability = luminance(F_boundary);
 
     // --- PROBABILITY 2: Specular Microfacet Heuristic (Using your original math structure) ---
     // This is evaluated ahead of time to determine your standard opaque lobe balance
@@ -222,44 +222,45 @@
     if (totalEnergy > 0.0001f) { 
         specularProbability = specEnergy / totalEnergy; 
     } 
-    specularProbability = max(specularProbability, 0.25f); 
+    //specularProbability = max(specularProbability, 0.25f); 
     specularProbability = lerp(specularProbability, 1.0f, surfaceInfo.metalness); 
 
     float3 nextThroughput = rayColor; 
     float pdf = 1.0; 
     bool isTransparentSurface = hitInfo.materialType == MATERIAL_TYPE_WATER || hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND; 
     bool rayRefractedGoesInside = false;
+    // Apply emissive lighting.
+        float3 emission = surfaceInfo.color * surfaceInfo.emissive * 700;
 
+    totalRadiance += emission;
     // --- STAGE 1: FILTER TRANSPARENT PASS-THROUGH FIRST ---
     if (isTransparentSurface && !isCloud) { 
+         if (Xi.x < specularProbability) { 
+        // Standard Specular Lobe 
+        float2 XiSpec = frac(noise.xy + float2(bounceCount * 0.12345, bounceCount * 0.98765)); 
+        float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
+        float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
+        nextDirection = normalize(mul(tangentReflDir, tbn)); 
         
-        if (Xi.x < transparencyReflectProbability) {
-            // Ray reflects off the outer shell of the glass. 
-            // Treat it exactly like an opaque specular reflection, utilizing your pristine H-vector math.
-            float2 XiSpec = frac(noise.xy + float2(bounceCount * 0.12345, bounceCount * 0.98765)); 
-            float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
-            float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
-            nextDirection = normalize(mul(tangentReflDir, tbn)); 
+        float3 H = normalize(V + nextDirection); 
+        float NdotL_r = max(dot(N, nextDirection), 0.0001); 
+        float NdotV_r = max(dot(N, V), 0.0001); 
+        float NdotH_r = max(dot(N, H), 0.0001); 
+        float VdotH_r = max(dot(V, H), 0.0001); 
+        
+        float3 F_r = fresnelSchlick(VdotH_r, F0); 
+        float D_r = D_GGX(NdotH_r, surfaceInfo.roughness); 
+        float G_r = G_Smith(NdotV_r, NdotL_r, surfaceInfo.roughness); 
+        float3 specWeight = ((F_r * D_r * G_r) / (4.0 * NdotV_r * NdotL_r)) + FdezAgueraMultipleScattering(NdotV_r, NdotL_r, surfaceInfo.roughness, F0); 
+        
+        float pdf_r = PDF_GGXVNDF(NdotV_r, NdotH_r, VdotH_r, surfaceInfo.roughness); 
+        float combinedPdf = max(pdf_r, 1e-6); 
+        
+        rayColor *= (specWeight * NdotL_r) / (combinedPdf * specularProbability); 
+    } 
+    if (Xi.x > transparencyReflectProbability) {
+
             
-            float3 H = normalize(V + nextDirection); 
-            float NdotL_r = max(dot(N, nextDirection), 0.0001); 
-            float NdotV_r = max(dot(N, V), 0.0001); 
-            float NdotH_r = max(dot(N, H), 0.0001); 
-            float VdotH_r = max(dot(V, H), 0.0001); 
-            
-            // EXACT HALFWAY VECTOR FRESNEL FOR PERFECT SPECULAR LUMINANCE
-            float3 F_r = fresnelSchlick(VdotH_r, F0); 
-            float D_r = D_GGX(NdotH_r, surfaceInfo.roughness); 
-            float G_r = G_Smith(NdotV_r, NdotL_r, surfaceInfo.roughness); 
-            float3 specWeight = ((F_r * D_r * G_r) / (4.0 * NdotV_r * NdotL_r)) + FdezAgueraMultipleScattering(NdotV_r, NdotL_r, surfaceInfo.roughness, F0); 
-            
-            float pdf_r = PDF_GGXVNDF(NdotV_r, NdotH_r, VdotH_r, surfaceInfo.roughness); 
-            float combinedPdf = max(pdf_r, 1e-6); 
-            
-            // Normalize weighting by the transparency selection probability
-            rayColor *= (specWeight * NdotL_r) / (combinedPdf * transparencyReflectProbability); 
-        } 
-        else { 
             // Ray passes through into the refraction lobe.
             float IOR = isWater ? 1.333 : 1.5; 
             
@@ -272,11 +273,15 @@
 
             float3 refracted = refract(direction, refractionNormal, eta); 
             
-            if (length(refracted) == 0.0f) {
-                // Fallback to internal reflection if total internal reflection triggers
-                nextDirection = reflect(direction, refractionNormal);
-            } else {
-                nextDirection = normalize(refracted); 
+            if (dot(refracted, refracted) < 1e-8) { 
+    // TOTAL INTERNAL REFLECTION (Only possible when leaving == true!)
+    nextDirection = reflect(direction, N);
+    
+    // Crucial: TIR reflects 100% of light. Do not apply transmissionWeight reduction here!
+    float TIR_probability = max(specularProbability, 1e-4); 
+    rayColor *= 1.0 / TIR_probability; 
+        }  else {
+                nextDirection = refracted; 
                 rayRefractedGoesInside = true;
             }
 
@@ -303,12 +308,14 @@
         float3 F_r = fresnelSchlick(VdotH_r, F0); 
         float D_r = D_GGX(NdotH_r, surfaceInfo.roughness); 
         float G_r = G_Smith(NdotV_r, NdotL_r, surfaceInfo.roughness); 
+        D_r /= BRDF_PI;
         float3 specWeight = ((F_r * D_r * G_r) / (4.0 * NdotV_r * NdotL_r)) + FdezAgueraMultipleScattering(NdotV_r, NdotL_r, surfaceInfo.roughness, F0); 
         
-        float pdf_r = PDF_GGXVNDF(NdotV_r, NdotH_r, VdotH_r, surfaceInfo.roughness); 
+        float pdf_r = PDF_GGX_Reflection(NdotV_r, NdotH_r, VdotH_r, surfaceInfo.roughness); 
         float combinedPdf = max(pdf_r, 1e-6); 
         
-        rayColor *= (specWeight * NdotL_r) / (combinedPdf * specularProbability); 
+        totalRadiance *= (specWeight * NdotL_r); 
+        rayColor = (specWeight * NdotL_r) * (combinedPdf * specularProbability);
     } 
     else { 
         // Standard Diffuse Lobe
@@ -323,13 +330,14 @@
         
         float diffMultiplier = BurleyFrostbite(surfaceInfo.roughness, NdotL_d, NdotV_d, VdotH_d); 
         float3 kD = (1.0 - F) * (1.0 - surfaceInfo.metalness); 
-        float3 diffuseBRDF = kD * surfaceInfo.color * (diffMultiplier); 
+        float3 diffuseBRDF = kD * surfaceInfo.color * (diffMultiplier / BRDF_PI); 
         
         float localDiffusePdf = max(PDF_CosineHemisphere(NdotL_d), 1e-4); 
         float diffuseProbability = 1.0 - specularProbability; 
         
-        float3 weight_d = (diffuseBRDF * NdotL_d) / (localDiffusePdf * diffuseProbability); 
-        rayColor *= weight_d; 
+        float3 weight_d = (diffuseBRDF * NdotL_d); 
+        totalRadiance *= weight_d ; 
+        rayColor *=  weight_d / localDiffusePdf;
     }
         
 
@@ -360,13 +368,13 @@
         // 3. Diffuse Component (Tied directly to your indirect math)
         float diffMultiplier = BurleyFrostbite(surfaceInfo.roughness, NdotL1, NdotV, VdotH);
         float3 kD1 = (1.0 - F) * (1.0 - surfaceInfo.metalness);
-        float3 diffuse = kD1 * surfaceInfo.color * (diffMultiplier); 
+        float3 diffuse = kD1 * surfaceInfo.color * (diffMultiplier / BRDF_PI); 
 
         // 4. Combine both components to evaluate full BRDF response for the sun direction
         float3 brdf = diffuse + specular; 
 
         // 5. Final Integration
-        float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 500; 
+        float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 700; 
         sunlightColor.rgb *= sunlightColor.a;
         float pdfSun = max(PDF_SunCone(), 1e-4); 
 
@@ -378,16 +386,15 @@
             surfaceInfo.alpha = 0.7;        // Match vanilla clouds alpha
         }
 
-        // Apply emissive lighting.
-        float3 emission = surfaceInfo.color * surfaceInfo.emissive * 1500;
+        
 
         
 
-        totalRadiance += emission * 5;
+        
         uint mediaType = objectInstance.offsetPack5 >> 8; // See MEDIA_TYPE macros in Constants.hlsl.
 
         // Advance ray forward
-        // Total path distance for motion-vector and depth output.
+      
         
         
         const bool isBlockBreakingOverlay = objectInstance.flags == (kObjectInstanceFlagAlphaTestThresholdHalf | kObjectInstanceFlagTextureAlphaControlsVertexColor);
@@ -405,18 +412,12 @@
             transmission = surfaceInfo.color;
             totalRadiance = 0;
         }
-        else if(isWater)
+        else if(isTransparentSurface)
         {
-            transmission = 1 - surfaceInfo.alpha;
-            
+            float totalTransmission = 1 - surfaceInfo.alpha;
+            rayColor = lerp(surfaceInfo.color * totalRadiance, surfaceInfo.color, totalTransmission);
         }
-        else if(hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !isCloud && !isWater) {
-            // Use alphablend for alpha-blended surfaces only and tint transmitted light.
-            float transmitAmount = 1.0 - surfaceInfo.alpha;
-            float3 glassTransmittance = lerp(float3(1.0, 1.0, 1.0), surfaceInfo.color, transmitAmount);
-            
-            transmission = glassTransmittance;
-        }
+    
         
 
         // Glint
@@ -431,8 +432,8 @@
         rayState.rayDesc.Direction = nextDirection;
         rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, nextDirection);
         // Update other ray properties
-        rayState.distance = hitInfo.rayT;
-        rayState.motion = surfaceInfo.position - surfaceInfo.prevPosition;
+        rayState.distance += hitInfo.rayT;
+        rayState.motion += surfaceInfo.position - surfaceInfo.prevPosition;
         
     }
 
