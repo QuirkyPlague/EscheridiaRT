@@ -39,10 +39,7 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
   return ggx1 * ggx2;
 }
 
-float3 fresnelSchlick(float cosTheta, float3 F0) {
-  float f = pow(1.0 - cosTheta, 5.0);
-  return f + F0 * (1.0 - f);
-}
+
 
 float BurleyFrostbite(float roughness, float n_dot_l, float n_dot_v, float v_dot_h)
 {
@@ -54,103 +51,6 @@ float BurleyFrostbite(float roughness, float n_dot_l, float n_dot_v, float v_dot
     float FDV = 1.0f + (FD90MinusOne * pow(1.0f - n_dot_v, 5.0f));
 
     return FDL * FDV * energyFactor;
-}
-
-
-float3 BRDF(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, float3 reflectedColor, SurfaceInfo surfaceInfo, float3 shadow, float3 GIRadiance) {
-    float3 Lo = float3(0.0,0.0,0.0);
-    float3 H = normalize(V + L);
-    float dist = length(L);
-    float attenuation = 1.0 / (dist * dist);
-      float NdotL = max(dot(N, L), 0.0001);
-    float NdotV = max(dot(N, V), 0.0001);
-    float NdotH = max(dot(N, H),0.0001);
-    float VdotH = max(dot(V, H),0.0001);
-    float VdotL = max(dot(V,L),0.0001);
-
-    
-    float3 radiance = sunColor * attenuation * shadow;
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness);
-    
-    float3 F = fresnelSchlick(max(dot(H, V), 0.0001), F0);
-    float NDF = DistributionGGX(N, H, surfaceInfo.roughness);
-    float G = GeometrySmith(N, V, L, surfaceInfo.roughness);
-
-    float3 numerator = NDF * G * F ;
-  float denominator = 4.0 * NdotV * NdotL + 0.0001;
-    float3 specular = numerator / denominator;
-  specular *= radiance;
-  specular *= 6;
- 
-
-    float diff = BurleyFrostbite(surfaceInfo.roughness, NdotL,NdotV, VdotH);
-
-    float3 kS = F;
-    float3 kD = float3(1.0,1.0,1.0) - kS;
-    kD *= (1.0 - surfaceInfo.metalness);
-    
-   // add to outgoing radiance Lo
-  indirect *= ((1.0 - surfaceInfo.metalness) * surfaceInfo.color / PI) ;
-  //GIRadiance *=  ((1.0 - surfaceInfo.metalness) * surfaceInfo.color / PI) ;
-  float3 emission = surfaceInfo.color * (surfaceInfo.emissive * EMISSION_STENGTH);
-  
-  Lo = (kD * surfaceInfo.color ) * diff  * (radiance * NdotL)   ;
-   Lo += emission;
-  Lo = lerp(Lo, specular, F)  ;
-    Lo = lerp(Lo, specular, surfaceInfo.metalness);
-
-   
-   
-  
-  return Lo;
-}
-
-float3 BRDF1(float3 N, float3 V, float3 L, float3 sunColor, float3 indirect, float3 color, float roughness, float metalness, float emissive, float3 shadow, float3 GIRadiance) {
-    float3 Lo = float3(0.0,0.0,0.0);
-    float3 H = normalize(V + L);
-    float dist = length(L);
-    float attenuation = 1.0 / (dist * dist);
-      float NdotL = max(dot(N, L), 0.0001);
-    float NdotV = max(dot(N, V), 0.0001);
-    float NdotH = max(dot(N, H),0.0001);
-    float VdotH = max(dot(V, H),0.0001);
-    float VdotL = max(dot(V,L),0.0001);
-
-    
-    float3 radiance = sunColor * attenuation * shadow;
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), color, metalness);
-    
-    float3 F = fresnelSchlick(max(dot(H, V), 0.0001), F0);
-    float NDF = DistributionGGX(N, H, roughness);
-    float G = GeometrySmith(N, V, L, roughness);
-
-    float3 numerator = NDF * G * F ;
-  float denominator = 4.0 * NdotV * NdotL + 0.0001;
-    float3 specular = numerator / denominator;
-  specular *= radiance;
-  specular *= 6;
- 
-
-    float diff = BurleyFrostbite(roughness, NdotL,NdotV, VdotH);
-
-    float3 kS = F;
-    float3 kD = float3(1.0,1.0,1.0) - kS;
-    kD *= (1.0 - metalness);
-    
-   // add to outgoing radiance Lo
-  indirect *= ((1.0 - metalness) * color / PI) ;
-  //GIRadiance *=  ((1.0 - surfaceInfo.metalness) * surfaceInfo.color / PI) ;
-  float3 emission = color* (emissive * EMISSION_STENGTH);
-  
-  Lo = (kD * color ) * diff  * (radiance * NdotL)   ;
-   Lo += emission;
-  Lo = lerp(Lo, specular, F) + indirect + GIRadiance ;
-    Lo = lerp(Lo, specular, metalness);
-
-   
-   
-  
-  return Lo;
 }
 
 //from Zombye
@@ -175,6 +75,15 @@ float3 SampleVNDFGGX(float3 V, float alpha, float2 u) {
     return safeNormalize(float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)), float3(0, 0, 1));
 }
 
+float DisneyDiffuse(float NdotL, float NdotV, float LdotH, float roughness) {
+    float energyBias = lerp(0.0, 0.5, roughness);
+    float energyFactor = lerp(1.0, 1.0 / 1.51, roughness);
+    float fd90 = energyBias + 2.0 * LdotH * LdotH * roughness;
+    float lightScatter = 1.0 + (fd90 - 1.0) * pow(clamp(1.0 - NdotL, 0.0, 1.0), 5.0);
+    float viewScatter = 1.0 + (fd90 - 1.0) * pow(clamp(1.0 - NdotV, 0.0, 1.0), 5.0);
+    return (lightScatter * viewScatter * energyFactor / PI);
+}
+
 float3x3 tbnMatrix(float3 N) {
   float3 up = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
   float3 T = normalize(cross(up, N));
@@ -182,121 +91,11 @@ float3x3 tbnMatrix(float3 N) {
   return float3x3(T, B, N);
 }
 
-float3 skyReflection(float3 dir, float3 normal, SurfaceInfo surfaceInfo, float3 noise)
-{
-  float3x3 tbn = tbnMatrix(normal);
-
-  //view direction in tangent space
-  float3 tangentView = mul((-dir), (tbn));
-
-   float3 accumulated = float3(0.0,0.0,0.0);
-  float3 skyDir = float3(0,0,0);
-  for (uint i = 0u; i < uint(4); i++) {
-    float alpha = max(surfaceInfo.roughness * surfaceInfo.roughness, 0.001);
-
-    float3 microFacit = SampleVNDFGGX(tangentView, alpha, noise.xy);
-    float3 tangentReflDir = reflect(-tangentView, microFacit);
-    skyDir = normalize(mul(tangentReflDir, tbn));
-
-    float3 skyCol = skyScattering1(skyDir);
-    float NdotL_sky = max(dot(skyDir, normal), 0.0);
-    accumulated += skyCol * NdotL_sky;
-  }
-
-  float3 sky = accumulated / float(4);
-  float3 skyColor = sky;
-  float3 F0 = lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness);
-  float3 F = fresnelSchlick(max(dot(-dir, normal), 0.0), F0);
-  skyColor *= F;
-  return skyColor;
-
-}
 
 
 
-float3 BRDFPoint(float3 N, float3 V, float3 L, float3 lightColor, SurfaceInfo surfaceInfo, float attenuation) {
-  float3 Lo = float3(0.0,0.0,0.0);
-    float3 H = normalize(V + L);
 
-  
-     float NdotL = max(dot(N, L), 0.0001);
-    float NdotV = max(dot(N, V), 0.0001);
-    float NdotH = max(dot(N, H),0.0001);
-    float VdotH = max(dot(V, H),0.0001);
-    float VdotL = max(dot(V,L),0.0001);
 
-    
-    float3 radiance = lightColor * attenuation;
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness);
-    
-    float3 F = fresnelSchlick(max(dot(H, V), 0.0001), F0);
-    float NDF = DistributionGGX(N, H, surfaceInfo.roughness);
-    float G = GeometrySmith(N, V, L, surfaceInfo.roughness);
-
-    float3 numerator = NDF * G * F ;
-  float denominator = 4.0 * NdotV * NdotL + 0.0001;
-    float3 specular = numerator / denominator;
-  specular *= radiance * 6;
- 
-
-    float diff = BurleyFrostbite(surfaceInfo.roughness, NdotL,NdotV, VdotH);
-
-    float3 kS = F;
-    float3 kD = 1.0 - kS;
-    kD *= (1.0 - surfaceInfo.metalness);
-
-    //indirect *= kD;
-   // add to outgoing radiance Lo
- 
- 
-  Lo = (kD * surfaceInfo.color ) * diff * radiance * NdotL;
-  Lo = lerp(Lo, specular, F);
-    Lo = lerp(Lo, specular, surfaceInfo.metalness);
-  
-  return Lo;
-}
-
-float3 BRDFPoint1(float3 N, float3 V, float3 L, float3 lightColor, float roughness, float metalness, float attenuation, float3 color) {
-  float3 Lo = float3(0.0,0.0,0.0);
-    float3 H = normalize(V + L);
-
-  
-     float NdotL = max(dot(N, L), 0.0001);
-    float NdotV = max(dot(N, V), 0.0001);
-    float NdotH = max(dot(N, H),0.0001);
-    float VdotH = max(dot(V, H),0.0001);
-    float VdotL = max(dot(V,L),0.0001);
-
-    
-    float3 radiance = lightColor * attenuation;
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), color, metalness);
-    
-    float3 F = fresnelSchlick(max(dot(H, V), 0.0001), F0);
-    float NDF = DistributionGGX(N, H, roughness);
-    float G = GeometrySmith(N, V, L, roughness);
-
-    float3 numerator = NDF * G * F ;
-  float denominator = 4.0 * NdotV * NdotL + 0.0001;
-    float3 specular = numerator / denominator;
-  specular *= radiance * 6;
- 
-
-    float diff = BurleyFrostbite(roughness, NdotL,NdotV, VdotH);
-
-    float3 kS = F;
-    float3 kD = 1.0 - kS;
-    kD *= (1.0 - metalness);
-
-    //indirect *= kD;
-   // add to outgoing radiance Lo
- 
- 
-  Lo = (kD * color ) * diff * radiance * NdotL;
-  Lo = lerp(Lo, specular, F);
-    Lo = lerp(Lo, specular, metalness);
-  
-  return Lo;
-}
 
 float D_GGX(float NdotH, float roughness) {
     float r = max(roughness, 0.001);
@@ -331,6 +130,25 @@ float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
 
     return (D * G1 * max(0.0, VdotH)) / max(NdotV, 0.00001);
 }
+
+float BRDF_Luminance(float3 linearColor)
+{
+    return dot(linearColor, float3(0.3, 0.59, 0.11));
+}
+
+#define BRDF_Pow5(x) pow(saturate(1.0 - x), 5.0)
+
+float BRDF_F_Shadowing(float3 Rf0)
+{
+    return saturate(50.0 * BRDF_Luminance(Rf0));
+}
+
+float3 fresnelSchlick(float cosTheta, float3 F0) {
+  float f = BRDF_F_Shadowing(F0);
+
+    return F0 + (f - F0) * BRDF_Pow5(cosTheta);
+}
+
 
 float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
     return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
