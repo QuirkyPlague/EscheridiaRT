@@ -13,7 +13,7 @@
 
 #define RAY_COUNT 24
 
-#define SUN_RADIUS   0.005
+#define SUN_RADIUS   0.00465f
 #define SUN_INTENSITY 1.96
 #define SUN_SHADOW_SAMPLES 1
 #define CLOUD_SHADOW_OPACITY 0.316

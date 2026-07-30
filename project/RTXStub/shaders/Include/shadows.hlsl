@@ -37,16 +37,13 @@ struct shadowPayload
     float3 transmission;
 };
 
-void TraceShadowRay(in RayDesc ray, out shadowPayload payload)
-{
+void TraceShadowRay(in RayDesc ray, out shadowPayload payload) {
     RayQuery<RAY_FLAG_NONE> q;
      const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_PRIMARY | INSTANCE_MASK_ALPHA_BLEND_PRIMARY | INSTANCE_MASK_WATER;
-    float3 transmission = 1;
-    for(int i = 0; i < 2; i++)
-    {
-         q.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, INSTANCE_MASK_SHADOW, ray);
 
-    
+    q.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, INSTANCE_MASK_SHADOW, ray);
+
+    float3 transmission = 1;
 
     while (q.Proceed()) {
         HitInfo hitInfo = GetCandidateHitInfo(q);
@@ -67,53 +64,9 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload)
         else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !isCloud) {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
-            
-           
-             float etaI = 1.0;
-    float etaT =  1.5;
-    float3 N = surfaceInfo.normal;
-           float3  direction = ray.Direction;
-            float3 F0 = lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness);
-    float3 Fv = fresnelSchlick(max(dot(N, -direction), 0.0), F0);
 
-            float3 nextDirection;
-    float specularProbability =
-    saturate(max(max(Fv.r, Fv.g), Fv.b));
 
-specularProbability = max(specularProbability, 0.04);
-
-// Metals always use the specular lobe.
-specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
-    float3 Nrefract = N;
-    float eta = etaI / etaT;
-    bool entering = dot(direction, geometryInfo.geometryNormal) < 0.0;
-    // Leaving water
-    if (dot(direction, N) > 0.0)
-    {
-        eta = etaT / etaI;
-        Nrefract = -N;
-    }
-
-    float3 refracted = refract(direction, Nrefract, eta);
-
-    // Total internal reflection
-    if (dot(refracted, refracted) < 1e-8)
-    {
-        
-       transmission = 0;
-    }
-    else
-    {
-        nextDirection = refracted;
-    }
-
-    float3 transmissionWeight = 1.0 - Fv;
-    float transmissionProbability = max(1.0 - specularProbability, 1e-4);
-
-    transmission *= transmissionWeight / transmissionProbability;
-    ray.Direction = nextDirection;
-    ray.Origin = offset_ray(ray.Origin, nextDirection);
-    transmission *= lerp(1.0, surfaceInfo.color, 1 - surfaceInfo.alpha);
+            transmission *= lerp(surfaceInfo.color, 0..xxx, surfaceInfo.alpha);
 
             if (!any(transmission))
             q.CommitNonOpaqueTriangleHit();
@@ -121,16 +74,15 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
         else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
             SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
-            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb) ;
-            float caustics = 1.0;
+            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb);
+            float3 caustics = 1..xxx;
 
-            caustics = (calcWaterCaustics(mad(getUnderwaterDirectionToSun(), hitInfo.rayT, ray.Origin), hitInfo.rayT));
+            caustics = calcWaterCaustics(mad(getUnderwaterDirectionToSun(), hitInfo.rayT, ray.Origin), hitInfo.rayT);
 
-
-            transmission = waterExtinction * caustics;
+            transmission *= waterExtinction * caustics;
 
             if (!any(transmission))
-                q.CommitNonOpaqueTriangleHit();
+            q.CommitNonOpaqueTriangleHit();
         }
         else {
             q.CommitNonOpaqueTriangleHit();
@@ -138,8 +90,6 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
     }
 
     payload.transmission = q.CommittedStatus() == COMMITTED_NOTHING ? transmission : 0;
-    }
-   
 }
 
 

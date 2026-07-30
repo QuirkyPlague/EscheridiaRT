@@ -48,6 +48,39 @@ float HashToFloat(uint hash) {
     return float(hash & 0x00ffffffu) / float(0x01000000u);
 }
 
+struct PathRNG
+{
+    uint state;
+};
+
+uint Hash(uint x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352d;
+    x ^= x >> 15;
+    x *= 0x846ca68b;
+    x ^= x >> 16;
+    return x;
+}
+
+float RandomFloat(uint seed)
+{
+    return (Hash(seed) & 0x00FFFFFF) / 16777216.0;
+}
+
+float NextFloat(inout PathRNG rng)
+{
+    rng.state = Hash(rng.state);
+    return (rng.state & 0x00FFFFFF) / 16777216.0;
+}
+
+float2 NextFloat2(inout PathRNG rng)
+{
+    return float2(
+        NextFloat(rng),
+        NextFloat(rng));
+}
+
 float4 SampleBlueNoise(uint2 pixelCoord, uint layerIndex) {
     layerIndex %= kBlueNoiseLayerCount;
     float2 uv = (pixelCoord + 0.5) / float2(kBlueNoiseTextureSize, kBlueNoiseTextureSize);
@@ -220,29 +253,26 @@ float3 CosineHemisphereSampling(float2 u, float3 n) {
     return safeNormalize(p.x * t + p.y * b + p.z * n, n);
 }
 
-float3 SampleSunDirection(float2 Xi, float3 sunDir)
-{
-    float thetaMax = SUN_RADIUS; // radians
+void buildOrthonormalBasis(float3 v, out float3 b1, out float3 b2) {
+    float sign = v.z >= 0.0 ? 1.0 : -1.0;
+    float a = -1.0 / (sign + v.z);
+    float b = v.x * v.y * a;
+    b1 = float3(1.0 + sign * v.x * v.x * a, sign * b, -sign * v.x);
+    b2 = float3(b, sign + v.y * v.y * a, -v.y);
+}
 
-    float cosThetaMax = cos(thetaMax);
+float3 randConeJitter(float3 dir, float radius, float2 jitter) {
+    float z = 1.0 - jitter.y * (1.0 - cos(radius));
 
-    // Uniform sample on the cone
-    float cosTheta = lerp(cosThetaMax, 1.0, Xi.x);
-    float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
-    float phi = 2.0 * PI * Xi.y;
+    float sinTheta = sqrt(1.0 - z * z);
+    float phi = 2.0 * PI * jitter.x;
 
-    float3 T = normalize(cross(
-        abs(sunDir.z) < 0.999 ?
-        float3(0,0,1) :
-        float3(1,0,0),
-        sunDir));
+    float3 localDir = float3(cos(phi) * sinTheta, sin(phi) * sinTheta, z);
 
-    float3 B = cross(sunDir, T);
+    float3 tan, biTan;
+    buildOrthonormalBasis(dir, tan, biTan);
 
-    return normalize(
-        cos(phi) * sinTheta * T +
-        sin(phi) * sinTheta * B +
-        cosTheta * sunDir);
+    return tan * localDir.x + biTan * localDir.y + dir * localDir.z;
 }
 
 float PDF_SunCone()

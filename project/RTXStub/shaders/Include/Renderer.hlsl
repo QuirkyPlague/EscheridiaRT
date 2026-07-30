@@ -144,7 +144,7 @@
 
 
 
-    void RenderVanilla(HitInfo hitInfo, inout RayState rayState, in float4 noise, in float3 totalRadiance, in float3 directLight, in float3 rayColor, inout float firstHitDist, int bounceCount)
+    void RenderVanilla(HitInfo hitInfo, inout RayState rayState, in PathRNG  rng, in float3 totalRadiance, in float3 directLight, in float3 rayColor, inout float firstHitDist, int bounceCount)
     {
         
         ObjectInstance objectInstance = objectInstances[hitInfo.objectInstanceIndex];
@@ -155,8 +155,10 @@
         
         float3 Wo = -normalize(rayState.rayDesc.Direction);
         bool inWater = g_view.cameraIsUnderWater;
-        float2 Xi = frac(noise.xy + float2(bounceCount * 0.61803398875,bounceCount * 0.38196601125));
-        
+        float2 Xi = NextFloat2(rng);
+        float2 XiSpec = NextFloat2(rng);
+        float2 XiDiffuse = NextFloat2(rng);
+        float rr = NextFloat(rng);
         float3 sunDir =  getDirectionToSun();
         float3 moonDir = -sunDir;
 
@@ -198,12 +200,15 @@
         float3 H = normalize(V + nextDirection);
         float VdotH = max(dot(H, V), 0.001);
         float3x3 tbn = tbnMatrix(N);
-        float3 tangentView = mul(tbn, -direction);
+       float3 tangentView = float3(
+        dot(-direction, tbn[0]),
+        dot(-direction, tbn[1]),
+        dot(-direction, tbn[2]));
 
         float roughness = max(surfaceInfo.roughness * surfaceInfo.roughness, 0.0);
         bool isWater = hitInfo.materialType == MATERIAL_TYPE_WATER;
         float3 F0 = isWater ? 0.02.xxx : lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness); 
-    float NdotV1 = max(dot(surfaceInfo.normal, V), 0.0001);
+        float NdotV1 = max(dot(surfaceInfo.normal, V), 0.0001);
 
     // --- PROBABILITY 1: Macro-Boundary Fresnel (Using N) for Transparency Choice ---
   
@@ -211,19 +216,24 @@
     // --- PROBABILITY 2: Specular Microfacet Heuristic (Using your original math structure) ---
     // This is evaluated ahead of time to determine your standard opaque lobe balance
     float3 effectiveH = normalize(lerp(surfaceInfo.normal, surfaceInfo.normal + V, surfaceInfo.roughness * surfaceInfo.roughness));
-      float3 F_boundary = fresnelSchlick(dot(nextDirection, effectiveH), F0);
+      float3 F_boundary = fresnelSchlick(dot(V, N), F0);
     // Use the boundary reflection energy to dictate if we reflect off the shell or pass through
     float transparencyReflectProbability =(luminance(F_boundary));
     float3 F_specular_estimate = fresnelSchlick(max(dot(V, effectiveH),0.001), F0); 
-    float3 diffuseColor = surfaceInfo.color * (1.0 - surfaceInfo.metalness); 
-    float diffEnergy = luminance(diffuseColor); 
-    float specEnergy = luminance(F_specular_estimate); 
-    float totalEnergy = diffEnergy + specEnergy; 
+    float3 kS = fresnelSchlick(max(dot(V,N), 0.001), F0);
+    float3 kD = (1.0 - kS) * (1.0 - surfaceInfo.metalness);
 
-    float specularProbability = specEnergy / (diffEnergy + specEnergy + 1e-10); 
-    
 
-    specularProbability = lerp(specularProbability, 1.0f, surfaceInfo.metalness); 
+
+float specularProbability = saturate(luminance(kS));
+
+specularProbability =
+    max(specularProbability, 0.25);
+
+specularProbability =
+    min(specularProbability, 1.0);
+
+specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
 
     float3 nextThroughput = rayColor; 
     float pdf = 1.0; 
@@ -233,19 +243,21 @@
     // --- STAGE 1: FILTER TRANSPARENT PASS-THROUGH FIRST ---
     if (isTransparentSurface && !isCloud) { 
         
-        if (Xi.x < transparencyReflectProbability) {
+        if (Xi.x < specularProbability) {
             // Ray reflects off the outer shell of the glass. 
             // Treat it exactly like an opaque specular reflection, utilizing your pristine H-vector math.
-            float2 XiSpec = frac(noise.xy + float2(bounceCount * 0.12345, bounceCount * 0.98765)); 
             float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
             float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
             nextDirection = normalize(mul(tangentReflDir, tbn)); 
             
-            float3 H = normalize(V + nextDirection); 
+            float3 H = normalize(
+    microfacetNormal.x * tbn[0] +
+    microfacetNormal.y * tbn[1] +
+    microfacetNormal.z * tbn[2]);
             float NdotL_r = max(dot(N, nextDirection), 0.0001); 
             float NdotV_r = max(dot(N, V), 0.0001); 
             float NdotH_r = max(dot(N, H), 0.0001); 
-            float VdotH_r = max(dot(V, H), 0.0001); 
+            float VdotH_r = max(dot(nextDirection, H), 0.0001); 
             
             // EXACT HALFWAY VECTOR FRESNEL FOR PERFECT SPECULAR LUMINANCE
             float3 F_r = fresnelSchlick(VdotH_r, F0); 
@@ -257,7 +269,7 @@
             float combinedPdf = max(pdf_r, 1e-6); 
             
             // Normalize weighting by the transparency selection probability
-            rayColor *= (specWeight * NdotL_r) / (combinedPdf * transparencyReflectProbability); 
+            rayColor *= (specWeight * NdotL_r) / (combinedPdf * specularProbability); 
         } 
         else { 
             // Ray passes through into the refraction lobe.
@@ -283,19 +295,27 @@
             // Balanced via the macroscopic transmission probability math cleanly
             float3 transmissionWeight = (1.0f - F_specular_estimate); 
             float transmissionProbability = max(1.0f - specularProbability, 1e-4); 
-            rayColor *= transmissionWeight / specularProbability; 
+            rayColor *= transmissionWeight / transmissionProbability; 
         } 
       
     } 
     else if(Xi.x < specularProbability)
     {
-         float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, Xi); 
+         float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
         float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
-        nextDirection = normalize(mul(tangentReflDir, tbn)); 
-        
-        float3 H = normalize(V + nextDirection);
+        nextDirection =
+        tangentReflDir.x * tbn[0] +
+        tangentReflDir.y * tbn[1] +
+        tangentReflDir.z * tbn[2]; 
+       
+
+
+       float3 H = normalize(
+    microfacetNormal.x * tbn[0] +
+    microfacetNormal.y * tbn[1] +
+    microfacetNormal.z * tbn[2]);
         float NdotL = max(dot(N, nextDirection), 0.0001); 
-        float NdotV = max(dot(N, nextDirection), 0.0001); 
+        float NdotV = max(dot(N, V), 0.0001); 
         float NdotH = max(dot(N, H), 0.0001);
         float VdotH = max(dot(V, H), 0.0001); 
         float LdotH = max(dot(nextDirection,H), 0.001);
@@ -304,31 +324,31 @@
         float D = D_GGX(NdotH, surfaceInfo.roughness); 
        
         float G = G_Smith(NdotV, NdotL, surfaceInfo.roughness); 
-        float3 specWeight = ((F * D * G) / (4.0 * NdotV * NdotL)) + FdezAgueraMultipleScattering(NdotV, NdotL, surfaceInfo.roughness, F0); 
+        float3 specWeight = ((F * D * G) / (4.0 * NdotV * NdotL)) +  FdezAgueraMultipleScattering(NdotV, NdotL, surfaceInfo.roughness, F0);; 
         
         float pdf_r = PDF_GGX_Reflection(NdotV, NdotH, VdotH, surfaceInfo.roughness); 
         float combinedPdf = max(pdf_r, 1e-6); 
         
-        rayColor *= (specWeight * NdotL) / (combinedPdf * specularProbability); 
+       rayColor *= (specWeight * NdotL) /
+            (combinedPdf * specularProbability);
     }
     else{ 
         // Standard Diffuse Lobe
-        float2 XiDiffuse = frac(float2(Xi.y, noise.z) + float2(bounceCount * 0.23456, bounceCount * 0.65432)); 
         nextDirection = CosineHemisphereSampling(XiDiffuse, surfaceInfo.normal); 
         
         float NdotL_d = max(dot(N, nextDirection), 0.0001); 
-        float NdotV_d = max(dot(N, nextDirection), 0.0001); 
+        float NdotV_d = max(dot(N, V), 0.0001); 
         float3 H = normalize(V + nextDirection); 
         float VdotH_d = max(dot(V, H), 0.0001); 
         float LdotH = max(dot(nextDirection,H), 0.001);
         float3 F = fresnelSchlick(VdotH_d, F0); 
         
-        float diffMultiplier = DisneyDiffuse(NdotL_d, NdotV_d, NdotV_d, LdotH) ; 
-        float3 kD =  (1.0 - surfaceInfo.metalness); 
+        float diffMultiplier = DisneyDiffuse(NdotL_d, NdotV_d, LdotH, surfaceInfo.roughness) ; 
+        float3 kD = (1.0 - F) * (1.0 - surfaceInfo.metalness);
         float3 diffuseBRDF = kD * surfaceInfo.color * (diffMultiplier); 
         
         float localDiffusePdf = max(PDF_CosineHemisphere(NdotL_d), 1e-4); 
-        float diffuseProbability = diffEnergy / (diffEnergy + specEnergy + 1e-10); 
+        float diffuseProbability = 1.0 - specularProbability; 
         
         float3 weight_d = ((diffuseBRDF * NdotL_d) / (localDiffusePdf * diffuseProbability)); 
 
@@ -339,7 +359,7 @@
         shadowPayload payload; 
         RayDesc shadowRay; 
         shadowRay.Origin = offset_ray(surfaceInfo.position, surfaceInfo.normal); 
-        shadowRay.Direction = SampleSunDirection(Xi, mainLightDir); 
+        shadowRay.Direction = randConeJitter(mainLightDir, SUN_RADIUS, Xi); 
         shadowRay.TMin = 0.0; 
         shadowRay.TMax = 10000; 
         TraceShadowRay(shadowRay, payload); 
@@ -361,7 +381,7 @@
         + FdezAgueraMultipleScattering(NdotV, NdotL1, surfaceInfo.roughness, F0); 
 
         // 3. Diffuse Component (Tied directly to your indirect math)
-        float diffMultiplier = DisneyDiffuse(NdotL1, NdotV, NdotV, LdotH);
+        float diffMultiplier =  DisneyDiffuse(NdotL1, NdotV, LdotH, surfaceInfo.roughness);
         float3 kD1 = (1.0 - F) * (1.0 - surfaceInfo.metalness);
         float3 diffuse = kD1 * surfaceInfo.color * (diffMultiplier); 
 
@@ -369,7 +389,7 @@
         float3 brdf = diffuse + specular; 
 
         // 5. Final Integration
-        float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 525; 
+        float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 575; 
         sunlightColor.rgb *= sunlightColor.a;
         float pdfSun = max(PDF_SunCone(), 1e-4); 
 
@@ -421,18 +441,29 @@
             transmission = glassTransmittance;
         }
         
+        float3 Ng = geometryInfo.geometryNormal;
+
+if (dot(nextDirection, Ng) < 0.0)
+    Ng = -Ng;
+
+
+
 
         // Glint
         if (objectInstance.flags & kObjectInstanceFlagGlint)
         totalRadiance += (sin(3.0 * g_view.time) * 0.5 + 0.5) * (float3(077, 23, 255) / 255.0);
 
         // Accumulate surface emission and throughput
+       
         rayState.color += totalRadiance * rayState.throughput;
-
         rayState.throughput *= rayColor  * transmission;
+        float d = dot(nextDirection, geometryInfo.geometryNormal);
+        rayState.rayDesc.Direction = nextDirection; 
+       rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, Ng);
 
-        rayState.rayDesc.Direction = nextDirection;
-        rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, nextDirection);
+    
+    
+
         // Update other ray properties
         rayState.distance += hitInfo.rayT;
         rayState.motion += surfaceInfo.position - surfaceInfo.prevPosition;
@@ -447,12 +478,16 @@
         RayState rayState;
         rayState.Init();
         rayState.rayDesc = rayDesc;
-        uint3 noiseCoord = uint3(
+        PathRNG rng;
+
+
+         uint3 noiseCoord = uint3(
         pixelPos % uint2(256, 256),
         g_view.frameCount % 128);
         float2 rotation =
         blueNoiseTexture.Load(uint4(noiseCoord, 0)).xy;
         float4 blueNoise = blueNoiseTexture.Load(uint4(noiseCoord, 0));
+
         float3 totalRadiance = 0;
         float3 directLight = 0;
         float3 rayColor = 1.0;
@@ -474,9 +509,12 @@
             {
                 HitInfo hitInfo = GetCommittedHitInfo(q);
                 ObjectInstance objectInstance = objectInstances[hitInfo.objectInstanceIndex];
+                rng.state = pixelPos.x + pixelPos.y * g_view.renderResolution.x;
+
+                rng.state ^= g_view.frameCount * 0x9E3779B9u;
+                rng.state ^= i * 0x85EBCA6Bu;
                 
-                
-                RenderVanilla(hitInfo, rayState, blueNoise, totalRadiance, directLight, rayColor, firstHitDist, i);
+                RenderVanilla(hitInfo, rayState,rng, totalRadiance, directLight, rayColor, firstHitDist, i);
                 // Russian Roulette
                 
             }
@@ -488,7 +526,7 @@
 
             if (i > 3) {
                 float p = max(rayState.throughput.x, max(rayState.throughput.y, rayState.throughput.z));
-                if (blueNoise.x > p) {
+                if (rng.state > p) {
                     break;
                 }
 
