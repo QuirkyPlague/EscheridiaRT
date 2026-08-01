@@ -158,6 +158,7 @@
         float2 Xi = NextFloat2(rng);
         float2 XiSpec = NextFloat2(rng);
         float2 XiDiffuse = NextFloat2(rng);
+        float2 XiShadow = NextFloat2(rng);
         float rr = NextFloat(rng);
         float3 sunDir =  getDirectionToSun();
         float3 moonDir = -sunDir;
@@ -228,7 +229,7 @@
 float specularProbability = saturate(luminance(kS));
 
 specularProbability =
-    max(specularProbability, 0.25);
+    max(specularProbability, 0.04);
 
 specularProbability =
     min(specularProbability, 1.0);
@@ -359,20 +360,20 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
         shadowPayload payload; 
         RayDesc shadowRay; 
         shadowRay.Origin = offset_ray(surfaceInfo.position, surfaceInfo.normal); 
-        shadowRay.Direction = randConeJitter(mainLightDir, SUN_RADIUS, Xi); 
+        shadowRay.Direction = randConeJitter(mainLightDir, SUN_RADIUS, XiShadow); 
         shadowRay.TMin = 0.0; 
         shadowRay.TMax = 10000; 
         TraceShadowRay(shadowRay, payload); 
 
         // 1. Calculate lighting vectors
-        float3 L = mainLightDir; 
+        float3 L = normalize(shadowRay.Direction); 
         float3 H1 = normalize(L + V); 
 
         float NdotL1 = max(dot(N, L), 0.0001); 
         float NdotV  = max(dot(N, V), 0.0001); 
         float NdotH  = max(dot(N, H1), 0.0001); 
         float VdotH1  = max(dot(V, H1), 0.0001); 
-        float LdotH = max(dot(L,H),0.001);
+        float LdotH = max(dot(L, H1), 0.001);
         // 2. Specular Component (Unchanged, matches your indirect evaluation)
         float3 F = fresnelSchlick(VdotH1, F0); 
         float D = D_GGX(NdotH, surfaceInfo.roughness); 
@@ -389,11 +390,31 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
         float3 brdf = diffuse + specular; 
 
         // 5. Final Integration
-        float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 575; 
+        float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 635; 
         sunlightColor.rgb *= sunlightColor.a;
         float pdfSun = max(PDF_SunCone(), 1e-4); 
 
-        totalRadiance += sunlightColor.rgb * brdf * NdotL1 * payload.transmission / pdfSun;
+        float3 sunContribution = sunlightColor.rgb * brdf * saturate(NdotL1) * payload.transmission / pdfSun;
+        float pdfBRDF;
+        if(Xi.x > specularProbability)
+{
+    pdfBRDF = PDF_CosineHemisphere(NdotL);
+}
+else
+{
+    pdfBRDF = PDF_GGX_Reflection(
+        NdotV,
+        NdotH,
+        VdotH,
+        roughness);
+}
+        float w = MISWeight(pdfSun, pdfBRDF);
+
+        sunContribution *= w;
+        float sunLuma = max(luminance(sunContribution), 1e-4);
+     
+
+        totalRadiance += sunContribution;
 
         if (objectInstance.flags & kObjectInstanceFlagClouds)
         {
@@ -402,7 +423,7 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
         }
 
         // Apply emissive lighting.
-        float3 emission = surfaceInfo.color * surfaceInfo.emissive * 500;
+        float3 emission = surfaceInfo.color * surfaceInfo.emissive * 150;
 
         
 
@@ -428,15 +449,11 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
             transmission = surfaceInfo.color;
             totalRadiance = 0;
         }
-        else if(isWater)
-        {
-            transmission = 1 - surfaceInfo.alpha;
-            
-        }
+    
         else if(hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !isCloud && !isWater) {
             // Use alphablend for alpha-blended surfaces only and tint transmitted light.
             float transmitAmount = 1.0 - surfaceInfo.alpha;
-            float3 glassTransmittance = lerp(float3(1.0, 1.0, 1.0), surfaceInfo.color, transmitAmount);
+            float3 glassTransmittance = lerp(surfaceInfo.color, 0.0, surfaceInfo.alpha);
             
             transmission = glassTransmittance;
         }
@@ -458,7 +475,7 @@ if (dot(nextDirection, Ng) < 0.0)
         rayState.color += totalRadiance * rayState.throughput;
         rayState.throughput *= rayColor  * transmission;
         float d = dot(nextDirection, geometryInfo.geometryNormal);
-        rayState.rayDesc.Direction = nextDirection; 
+        rayState.rayDesc.Direction = normalize(nextDirection); 
        rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, Ng);
 
     
@@ -524,14 +541,7 @@ if (dot(nextDirection, Ng) < 0.0)
                 break;
             }
 
-            if (i > 3) {
-                float p = max(rayState.throughput.x, max(rayState.throughput.y, rayState.throughput.z));
-                if (rng.state > p) {
-                    break;
-                }
-
-                rayState.throughput /= p;
-            }
+           
             // Terminate rays that can't contribute anymore.
             if (all(rayState.throughput == 0))
             break;

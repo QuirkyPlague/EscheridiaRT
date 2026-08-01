@@ -1,4 +1,5 @@
 #include "Include/Generated/Signature.hlsl"
+#include "Include/Util.hlsl"
 
 [numthreads(16, 16, 1)]
 void FinalCombine(
@@ -8,13 +9,31 @@ void FinalCombine(
     uint3 groupID : SV_GroupID
     )
 {
-    // Use these for indexing denoisingOutputs[] (diffuse or specular) or denoisingChromaAndVarianceOutputs[] (only diffuse) arrays
+   // Use these for indexing denoisingOutputs[] (diffuse or specular) or denoisingChromaAndVarianceOutputs[] (only diffuse) arrays
     uint diffuseDenoisingBufferIndex = g_rootConstant0 & 0xff;
     uint specularDenoisingBufferIndex = (g_rootConstant0 >> 8) & 0xff;
 
     // Use for indexing shadowDenoisingInputs[] or shadowDenoisingOutputs[] arrays
     uint shadowDenoisingBufferIndex = (g_rootConstant0 >> 16) & 0xff;
 
-    float4 diffuse = outputBufferIndirectDiffuse[dispatchThreadID.xy];
-    outputBufferFinal[dispatchThreadID.xy] = float4(diffuse.rgb, 1.0);
+    uint2 pixelPos = dispatchThreadID.xy;
+
+
+    float3 denoisedDiffuse = outputBufferIndirectDiffuse[pixelPos].rgb;
+
+    float3 directColor = outputBufferIndirectSpecular[pixelPos].xyz;
+
+    float3 currentSample =  denoisedDiffuse;
+    float3 historyColor = outputBufferReferencePathTracer[pixelPos].rgb;
+    uint historyLength = readAccumulationFrameIdx();
+
+    if (historyLength) {
+        historyColor = lerp(historyColor, currentSample, 1./(historyLength+1));
+    } else {
+        // This doesn't let the NaNs and INFs persist between accumulations.
+        historyColor = currentSample;
+    }
+
+    outputBufferReferencePathTracer[pixelPos] = float4(historyColor, 1);;
+    outputBufferFinal[pixelPos] = float4(historyColor, 1);
 }

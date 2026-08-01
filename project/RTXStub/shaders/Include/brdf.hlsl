@@ -131,6 +131,11 @@ float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
     return (D * G1 * max(0.0, VdotH)) / max(NdotV, 0.00001);
 }
 
+float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
+    return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
+}
+
+
 float BRDF_Luminance(float3 linearColor)
 {
     return dot(linearColor, float3(0.3, 0.59, 0.11));
@@ -150,8 +155,12 @@ float3 fresnelSchlick(float cosTheta, float3 F0) {
 }
 
 
-float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
-    return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
+float MISWeight(float pdfA, float pdfB)
+{
+    pdfA *= pdfA;
+    pdfB *= pdfB;
+
+    return pdfA / (pdfA + pdfB);
 }
 
 float PDF_CosineHemisphere(float NdotL) {

@@ -32,7 +32,7 @@ float getwaves(float2 position, int iterations) {
     float2 p = float2(sin(iter), cos(iter));
     
     // calculate wave data
-    float2 res = wavedx(position, p, frequency, g_view.time * timeMultiplier + wavePhaseShift);
+    float2 res = wavedx(position, p, frequency, wavePhaseShift);
 
     // shift position around according to wave drag and derivative of the wave
     position += p * res.y * weight * WAVE_PULL;

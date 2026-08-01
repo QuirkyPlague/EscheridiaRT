@@ -63,6 +63,7 @@ uint Hash(uint x)
     return x;
 }
 
+
 float RandomFloat(uint seed)
 {
     return (Hash(seed) & 0x00FFFFFF) / 16777216.0;
@@ -88,10 +89,24 @@ float4 SampleBlueNoise(uint2 pixelCoord, uint layerIndex) {
 }
 
 float4 LoadBlueNoise(uint2 texelCoord, uint layerIndex) {
-     uint3 noiseCoord = uint3(
-        texelCoord % uint2(256, 256),
-        g_view.frameCount % 128);
+    uint2 wrappedCoord = texelCoord % uint2(kBlueNoiseTextureSize, kBlueNoiseTextureSize);
+    uint temporalLayer = (g_view.frameCount + layerIndex) % kBlueNoiseLayerCount;
+    uint3 noiseCoord = uint3(wrappedCoord, temporalLayer);
     return blueNoiseTexture.Load(uint4(noiseCoord, 0));
+}
+
+float2 SampleSTBN2(uint2 pixelCoord, uint bounceIndex, uint sampleIndex) {
+    float4 noise = LoadBlueNoise(pixelCoord, bounceIndex + sampleIndex);
+    float2 value = float2(noise.x, noise.y);
+    float2 offset = float2(
+        0.61803398875f * float(sampleIndex + 1u),
+        0.38196601125f * float(sampleIndex + 1u));
+    return frac(value + offset);
+}
+
+float SampleSTBN1(uint2 pixelCoord, uint bounceIndex, uint sampleIndex) {
+    float4 noise = LoadBlueNoise(pixelCoord, bounceIndex + sampleIndex);
+    return frac(noise.w + 0.61803398875f * float(sampleIndex + 1u));
 }
 
 uint3 getDispatchDimensions() {
@@ -134,8 +149,14 @@ bool isUpscalingEnabled() {
     return !g_view.enableTAA;
 }
 
+float2 getCameraJitter(uint2 pixelCoord) {
+    float2 sample = SampleSTBN2(pixelCoord, g_view.frameCount, 8u);
+    return sample - 0.5f;
+}
+
 float2 getNDCjittered(uint2 pixelCoord) {
-    float2 ndc = g_view.recipRenderResolution * (pixelCoord + 0.5 + (isUpscalingEnabled() ? g_view.subPixelJitter : 0));
+    float2 subpixelOffset = isUpscalingEnabled() ? g_view.subPixelJitter : getCameraJitter(pixelCoord);
+    float2 ndc = g_view.recipRenderResolution * (pixelCoord + 0.5 + subpixelOffset);
     return mad(ndc, float2(2, -2), float2(-1, 1));
 }
 
@@ -272,7 +293,10 @@ float3 randConeJitter(float3 dir, float radius, float2 jitter) {
     float3 tan, biTan;
     buildOrthonormalBasis(dir, tan, biTan);
 
-    return tan * localDir.x + biTan * localDir.y + dir * localDir.z;
+    return normalize(
+    tan * localDir.x +
+    biTan * localDir.y +
+    dir * localDir.z);
 }
 
 float PDF_SunCone()
@@ -360,5 +384,19 @@ float3 offset_ray(const float3 p, const float3 n)
 
 }
 
+uint readAccumulationFrameIdx() { return outputBufferToneMappingHistogram[uint2(0,0)]; }
+void storeAccumulationFrameIdx(uint frameIdx) { outputBufferToneMappingHistogram[uint2(0,0)] = frameIdx; }
+
+// FPS
+float readAverageFps() { return outputBufferToneCurve[uint2(1,0)]; }
+void storeAverageFps(float fps) { outputBufferToneCurve[uint2(1,0)] = fps; }
+
+// Last Frame Timestamp
+float readLastFrameTimestamp() { return outputBufferToneCurve[0..xx]; }
+void storeLastFrameTimestamp(float timestamp) { outputBufferToneCurve[0..xx] = timestamp; }
+
+// Accumulation Start Timestamp
+float readAccumulationStartTimestamp() { return outputBufferToneCurve[uint2(2,0)]; }
+void storeAccumulationStartTimestamp(float timestamp) { outputBufferToneCurve[uint2(2,0)] = timestamp; }
 
 #endif
