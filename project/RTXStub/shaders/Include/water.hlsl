@@ -4,53 +4,72 @@
 #include "settings.hlsl"
 #include "Util.hlsl"
 
+float intersectPlane(float3 origin, float3 direction, float3 pos, float3 normal) { 
+  return clamp(dot(pos - origin, normal) / dot(direction, normal), -1.0, 9991999.0); 
+}
+
 // Calculates wave value and its derivative,
 // for the wave direction, position in space, wave frequency and time
-float2 wavedx(float2 position, float2 direction, float frequency, float timeshift)
-{
-    float x = dot(direction, position) * frequency + timeshift;
-    float wave = exp(sin(x) - 1.0f);
-    float dx = wave * cos(x);
-    return float2(wave, -dx);
+float2 wavedx(float2 position, float2 direction, float frequency, float timeshift) {
+  float x = dot(direction, position) * frequency + timeshift;
+  x = fmod(x, 2.0*PI);
+  float wave = exp(sin(x) - 1.0);
+  float dx = wave * cos(x);
+  return float2(wave, -dx);
 }
 
 // Calculates waves by summing octaves of various waves with various parameters
-float getwaves(float2 position, int iterations, float frameTimeCounter)
-{
-    float wavePhaseShift = length(position) * WAVE_RANDOMNESS; // avoid identical phase each octave
-    float iter = 0.0f; // helps generate well-distributed wave directions
-    float frequency = WAVE_FREQUENCY; // base frequency (modified per octave)
-    float timeMultiplier = WAVE_SPEED; // base time multiplier (modified per octave)
-    float weight = 0.85f; // base weight (modified per octave)
-    float sumOfValues = 0.0f;
-    float sumOfWeights = 0.0f;
+float getwaves(float2 position, int iterations) {
+  float wavePhaseShift = length(position) * WAVE_RANDOMNESS; // this is to avoid every octave having exactly the same phase everywhere
+  float iter = 0.0; // this will help generating well distributed wave directions
+  float frequency = WAVE_FREQUENCY; // frequency of the wave, this will change every iteration
+  float timeMultiplier = WAVE_SPEED; // time multiplier for the wave, this will change every iteration
+  float weight = 1.0;// weight in final sum for the wave, this will change every iteration
+  float sumOfValues = 0.0; // will store final sum of values
+  float sumOfWeights = 0.0; // will store final sum of weights
+  for(int i=0; i < iterations; i++) {
+    // generate some wave direction that looks kind of random
+    float2 p = float2(sin(iter), cos(iter));
+    
+    // calculate wave data
+    float2 res = wavedx(position, p, frequency, wavePhaseShift);
 
-    for (int i = 0; i < iterations; ++i)
-    {
-        // generate some wave direction that looks kind of random
-        float2 p = float2(sin(iter), cos(iter));
+    // shift position around according to wave drag and derivative of the wave
+    position += p * res.y * weight * WAVE_PULL;
 
-        // calculate wave data
-        float2 res = wavedx(position, p, frequency, g_view.time * timeMultiplier + wavePhaseShift);
+    // add the results to sums
+    sumOfValues += res.x * weight;
+    sumOfWeights += weight;
 
-        // shift position around according to wave drag and derivative of the wave
-        position += p * res.y * weight * WAVE_PULL;
+    // modify next octave ;
+    weight = lerp(weight, 0.0, WAVE_OCTAVE_MIX_WEIGHT);
+    frequency *= WAVE_OCTAVE_FREQUENCY;
+    timeMultiplier *= WAVE_OCTAVE_SPEED;
 
-        // add the results to sums
-        sumOfValues += res.x * weight;
-        sumOfWeights += weight;
+    // add some kind of random value to make next wave look random too
+    //iter += 1232.399963;
+    iter = fmod(iter + 1232.399963, 2.0*PI);
+  }
+  // calculate and return
+  return sumOfValues / sumOfWeights;
+}
 
-        // modify next octave
-        weight = lerp(weight, 0.0f, WAVE_OCTAVE_MIX_WEIGHT);
-        frequency *= WAVE_OCTAVE_FREQUENCY;
-        timeMultiplier *= WAVE_OCTAVE_SPEED;
-
-        // add some kind of random value to make next wave look random too
-        iter += 1232.399963f;
+float raymarchwater(float3 camera, float3 start, float3 end, float depth) {
+  float3 pos = start;
+  float3 dir = normalize(end - start);
+  for(int i=0; i < 12; i++) {
+    // the height is from 0 to -depth
+    float height = getwaves(pos.xz, WAVE_OCTAVES) * depth - depth;
+    // if the waves height almost nearly matches the ray height, assume its a hit and return the hit distance
+    if(height + 0.01 > pos.y) {
+      return distance(pos, camera);
     }
-
-    // final normalized sum
-    return sumOfValues / sumOfWeights;
+    // iterate forwards according to the height mismatch
+    pos += dir * (pos.y - height);
+  }
+  // if hit was not registered, just assume hit the top layer, 
+  // this makes the raymarching faster and looks better at higher distances
+  return distance(start, camera);
 }
 
 // Calculate normal at point by calculating the height at pos and 2 additional nearby points
@@ -59,11 +78,11 @@ float3 waveNormal(float2 pos, float e, float depth)
     
     float2 ex = float2(e, 0.0f);
 
-    float H = getwaves(pos, WAVE_OCTAVES, g_view.time) * depth;
+    float H = getwaves(pos, WAVE_OCTAVES) * depth;
     float3 a = float3(pos.x, H, pos.y);
 
-    float hL = getwaves(pos - ex, WAVE_OCTAVES, g_view.time) * depth;         
-    float hR = getwaves(pos + ex.xy, WAVE_OCTAVES, g_view.time) * depth;     
+    float hL = getwaves(pos - ex, WAVE_OCTAVES) * depth;         
+    float hR = getwaves(pos + ex.xy, WAVE_OCTAVES) * depth;     
 
     float3 v1 = a - float3(pos.x - e, hL, pos.y);
     float3 v2 = a - float3(pos.x, hR, pos.y + e);

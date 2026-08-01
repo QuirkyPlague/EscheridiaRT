@@ -96,7 +96,7 @@ void VL_FOG(float3 pos, float3 dir, float3 noise, float hitDist, float3 lightDir
         shadowRay.TMin = 0.0;
         shadowRay.TMax = 10000.0;
 
-        ShadowPayload payload;
+        shadowPayload payload;
         TraceShadowRay(shadowRay, payload);
 
         float3 shadow = payload.transmission;

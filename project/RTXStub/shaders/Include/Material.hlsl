@@ -563,6 +563,7 @@ surfaceInfo.normal =
     if (!hitInfo.frontFacing) surfaceInfo.normal = -surfaceInfo.normal;
 
     surfaceInfo.color = color.rgb;
+    surfaceInfo.color = pow(surfaceInfo.color, 2.2);
     surfaceInfo.alpha = color.a;
     #if WHITE_WORLD == 1
      surfaceInfo.color = 1.0;

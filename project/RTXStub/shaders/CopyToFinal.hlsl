@@ -25,6 +25,7 @@
 #include "Include/Util.hlsl"
 #include "Include/tonemapping.hlsl"
 
+
 [numthreads(16, 16, 1)]
 void CopyToFinal(
     uint3 dispatchThreadID : SV_DispatchThreadID,
@@ -36,8 +37,7 @@ void CopyToFinal(
     // *cricket noises*
     // Note that g_rootConstant0 from FinalCombine pass is accessible here
 
-    // Below code is part of the example ray tracing shader implementation.
-    if (any(dispatchThreadID.xy >= g_view.displayResolution)) return;
+   if (any(dispatchThreadID.xy >= g_view.displayResolution)) return;
 
     float4 color;
     if (isUpscalingEnabled()) {
@@ -52,7 +52,4 @@ void CopyToFinal(
     color.rgb = pow(color.rgb, 1.0/2.2); // Gamma correction.
     outputBufferFinal[dispatchThreadID.xy] = color;
     }
-    
-    
-
 }

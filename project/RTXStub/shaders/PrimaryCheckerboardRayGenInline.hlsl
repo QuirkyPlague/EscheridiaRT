@@ -34,23 +34,39 @@ void PrimaryCheckerboardRayGenInline(
     uint groupIndex: SV_GroupIndex,
     uint3 groupID: SV_GroupID)
 {
-    
+    // *cricket noises*
     // Note that g_rootConstant0 from AdaptiveDenoiserCalculateGradients pass is accessible here
-    
+    int totalRayCount = 24;
 
     // Below is an implementation of a basic ray traced vanilla-like shader.
     if (any(dispatchThreadID.xy >= g_view.renderResolution)) return;
-
-    RayDesc rayDesc;
+    float hitDist; float3 objMotion; float3 color; float2 motionVector; float firstHitDist;
+    
+   
+     RayDesc rayDesc;
     rayDesc.Direction = rayDirFromNDC(getNDCjittered(dispatchThreadID.xy));
     rayDesc.Origin = g_view.viewOriginSteveSpace;
     rayDesc.TMin = 0; rayDesc.TMax = 10000;
 
-    float hitDist; float3 objMotion; float3 indirect;
-    float3 color = RenderRay(rayDesc, dispatchThreadID.xy, hitDist, objMotion, indirect);
+        
+             
+     color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy, firstHitDist);
 
-    float2 motionVector = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist, objMotion);
+     float4 blueNoise = GetBlueNoiseValue(dispatchThreadID.xy);
+      float3 sunDir =  getDirectionToSun();
+    float3 moonDir = -sunDir;
 
+    float sunFade = saturate(sunDir.y);
+    float moonFade = saturate(moonDir.y);
+
+    float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
+    float dist = length(g_view.viewOriginSteveSpace);
+   
+    
+    
+        
+motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist, objMotion);
+   
 
     // Basic debug views for NaNs and Infinity
     #if 1
@@ -61,10 +77,7 @@ void PrimaryCheckerboardRayGenInline(
     #endif
 
     // The only 3 buffers necessary for upscaling support (e.g. DLSS)
-    outputBufferIndirectDiffuse[dispatchThreadID.xy] = float4(indirect, 1.0);
-    outputBufferIndirectSpecular[dispatchThreadID.xy] = float4(color,0.0);
-   
+    outputBufferIndirectDiffuse[dispatchThreadID.xy] = float4(color, 1);
     outputBufferMotionVectors[dispatchThreadID.xy] = motionVector;
     outputBufferReprojectedPathLength[dispatchThreadID.xy] = hitDist;
-    outputBufferPrimaryPathLength[dispatchThreadID.xy] = hitDist;
 }
