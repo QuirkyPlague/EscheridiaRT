@@ -299,6 +299,16 @@ float3 randConeJitter(float3 dir, float radius, float2 jitter) {
     dir * localDir.z);
 }
 
+
+float3 FixShadingNormal(float3 Ng, float3 Ns)
+{
+    if (dot(Ng, Ns) < 0)
+    {
+        Ns = normalize(Ns - 2.0 * dot(Ns, Ng) * Ng);
+    }
+
+    return Ns;
+}
 float PDF_SunCone()
 {
     float cosThetaMax = cos(SUN_RADIUS);

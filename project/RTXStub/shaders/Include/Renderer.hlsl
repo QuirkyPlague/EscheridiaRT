@@ -211,36 +211,25 @@
         float3 F0 = isWater ? 0.02.xxx : lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness); 
         float NdotV1 = max(dot(surfaceInfo.normal, V), 0.0001);
 
-    // --- PROBABILITY 1: Macro-Boundary Fresnel (Using N) for Transparency Choice ---
-  
 
-    // --- PROBABILITY 2: Specular Microfacet Heuristic (Using your original math structure) ---
-    // This is evaluated ahead of time to determine your standard opaque lobe balance
     float3 effectiveH = normalize(lerp(surfaceInfo.normal, surfaceInfo.normal + V, surfaceInfo.roughness * surfaceInfo.roughness));
-      float3 F_boundary = fresnelSchlick(dot(V, N), F0);
-    // Use the boundary reflection energy to dictate if we reflect off the shell or pass through
-    float transparencyReflectProbability =(luminance(F_boundary));
     float3 F_specular_estimate = fresnelSchlick(max(dot(V, effectiveH),0.001), F0); 
-    float3 kS = fresnelSchlick(max(dot(V,N), 0.001), F0);
+    float3 kS = fresnelSchlick(max(dot(V,effectiveH), 0.001), F0);
     float3 kD = (1.0 - kS) * (1.0 - surfaceInfo.metalness);
 
+    float specularProbability = saturate(luminance(kS));
 
+    specularProbability = max(specularProbability, 0.04);
 
-float specularProbability = saturate(luminance(kS));
-
-specularProbability =
-    max(specularProbability, 0.04);
-
-specularProbability =
-    min(specularProbability, 1.0);
-
-specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
+    specularProbability = min(specularProbability, 1.0);
+    specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
 
     float3 nextThroughput = rayColor; 
     float pdf = 1.0; 
     bool isTransparentSurface = hitInfo.materialType == MATERIAL_TYPE_WATER || hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND; 
     bool rayRefractedGoesInside = false;
-
+       float3 F_boundary = fresnelSchlick(dot(V, N), F0);
+    float transparencyReflectProbability =(luminance(F_boundary));
     // --- STAGE 1: FILTER TRANSPARENT PASS-THROUGH FIRST ---
     if (isTransparentSurface && !isCloud) { 
         
@@ -309,15 +298,15 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
         tangentReflDir.y * tbn[1] +
         tangentReflDir.z * tbn[2]; 
        
-
+        float3 correctedN = CorrectShadingNormal(V,nextDirection,geometryInfo.geometryNormal,surfaceInfo.normal);
 
        float3 H = normalize(
     microfacetNormal.x * tbn[0] +
     microfacetNormal.y * tbn[1] +
     microfacetNormal.z * tbn[2]);
-        float NdotL = max(dot(N, nextDirection), 0.0001); 
-        float NdotV = max(dot(N, V), 0.0001); 
-        float NdotH = max(dot(N, H), 0.0001);
+        float NdotL = max(dot(correctedN, nextDirection), 0.0001); 
+        float NdotV = max(dot(correctedN, V), 0.0001); 
+        float NdotH = max(dot(correctedN, H), 0.0001);
         float VdotH = max(dot(V, H), 0.0001); 
         float LdotH = max(dot(nextDirection,H), 0.001);
 
@@ -334,11 +323,10 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
             (combinedPdf * specularProbability);
     }
     else{ 
-        // Standard Diffuse Lobe
-        nextDirection = CosineHemisphereSampling(XiDiffuse, surfaceInfo.normal); 
-        
-        float NdotL_d = max(dot(N, nextDirection), 0.0001); 
-        float NdotV_d = max(dot(N, V), 0.0001); 
+        nextDirection = CosineHemisphereSampling(XiDiffuse, geometryInfo.geometryNormal); 
+        float3 correctedN = CorrectShadingNormal(V,nextDirection,geometryInfo.geometryNormal,surfaceInfo.normal);
+        float NdotL_d = max(dot(correctedN, nextDirection), 0.0001); 
+        float NdotV_d = max(dot(correctedN, V), 0.0001); 
         float3 H = normalize(V + nextDirection); 
         float VdotH_d = max(dot(V, H), 0.0001); 
         float LdotH = max(dot(nextDirection,H), 0.001);
@@ -359,7 +347,7 @@ specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
 
         shadowPayload payload; 
         RayDesc shadowRay; 
-        shadowRay.Origin = offset_ray(surfaceInfo.position, surfaceInfo.normal); 
+        shadowRay.Origin = offset_ray(surfaceInfo.position, geometryInfo.geometryNormal); 
         shadowRay.Direction = randConeJitter(mainLightDir, SUN_RADIUS, XiShadow); 
         shadowRay.TMin = 0.0; 
         shadowRay.TMax = 10000; 
@@ -423,7 +411,7 @@ else
         }
 
         // Apply emissive lighting.
-        float3 emission = surfaceInfo.color * surfaceInfo.emissive * 150;
+        float3 emission = surfaceInfo.color * surfaceInfo.emissive * 100;
 
         
 
@@ -475,8 +463,8 @@ if (dot(nextDirection, Ng) < 0.0)
         rayState.color += totalRadiance * rayState.throughput;
         rayState.throughput *= rayColor  * transmission;
         float d = dot(nextDirection, geometryInfo.geometryNormal);
-        rayState.rayDesc.Direction = normalize(nextDirection); 
-       rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, Ng);
+        rayState.rayDesc.Direction = nextDirection; 
+       rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, nextDirection);
 
     
     

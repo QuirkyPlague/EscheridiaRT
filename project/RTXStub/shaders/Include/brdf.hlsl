@@ -155,6 +155,24 @@ float3 fresnelSchlick(float cosTheta, float3 F0) {
 }
 
 
+float3 CorrectShadingNormal(
+    float3 wo,
+    float3 wi,
+    float3 Ng,
+    float3 Ns)
+{
+    float NoV  = saturate(dot(Ng, wo));
+    float NoL  = saturate(dot(Ng, wi));
+
+    float NsV  = saturate(dot(Ns, wo));
+    float NsL  = saturate(dot(Ns, wi));
+
+    float scaleV = NoV / max(NsV, 1e-4);
+    float scaleL = NoL / max(NsL, 1e-4);
+
+    return Ns * min(scaleV, scaleL);
+}
+
 float MISWeight(float pdfA, float pdfB)
 {
     pdfA *= pdfA;

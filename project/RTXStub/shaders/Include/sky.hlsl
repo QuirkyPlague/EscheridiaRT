@@ -267,7 +267,7 @@ float3 getSun(float3 dir) {
     sun *
     limbDarkening *
     sunColor *
-    6.0 *
+    30.0 *
     sunHeightFactor;
     float moon = smoothstep(
         0.0002 * 0.86,
