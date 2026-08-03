@@ -16,7 +16,7 @@
 #define SUN_RADIUS   0.00465f
 #define SUN_INTENSITY 1.96
 #define SUN_SHADOW_SAMPLES 1
-#define CLOUD_SHADOW_OPACITY 0.316
+#define CLOUD_SHADOW_OPACITY 0.616
 
 //Allows reading of resource pack fog values to determine shadow opacity
 #define DO_RP_CLOUD_OPACITY 0
@@ -50,12 +50,12 @@
 #define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 1.8)
 #define NOON_SUN_COLOR float4(1.0,0.95,0.85, 1.15)
 #define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 1.3)
-#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.1)
+#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.013)
 
 //sky intensity multipliers
 
 #define RAYLEIGH_MULT                  1.1 //brightness of the sky
-#define NIGHT_INTENSITY                0.21 //brightness of the night sky
+#define NIGHT_INTENSITY                0.041 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
 //sky zenith colors

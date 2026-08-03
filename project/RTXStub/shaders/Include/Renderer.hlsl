@@ -323,7 +323,7 @@
             (combinedPdf * specularProbability);
     }
     else{ 
-        nextDirection = CosineHemisphereSampling(XiDiffuse, geometryInfo.geometryNormal); 
+        nextDirection = CosineHemisphereSampling(XiDiffuse, surfaceInfo.normal); 
         float3 correctedN = CorrectShadingNormal(V,nextDirection,geometryInfo.geometryNormal,surfaceInfo.normal);
         float NdotL_d = max(dot(correctedN, nextDirection), 0.0001); 
         float NdotV_d = max(dot(correctedN, V), 0.0001); 
