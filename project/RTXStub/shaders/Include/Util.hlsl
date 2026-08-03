@@ -48,6 +48,12 @@ float HashToFloat(uint hash) {
     return float(hash & 0x00ffffffu) / float(0x01000000u);
 }
 
+float2 HashToFloat2(uint3 v) {
+    uint h0 = PCG_Hash(v);
+    uint h1 = PCG_Hash(uint3(h0, v.y + 0x9E3779B9u, v.z + 0x85EBCA6Bu));
+    return float2(HashToFloat(h0), HashToFloat(h1));
+}
+
 struct PathRNG
 {
     uint state;
@@ -55,24 +61,23 @@ struct PathRNG
 
 uint Hash(uint x)
 {
-    x ^= x >> 16;
-    x *= 0x7feb352d;
-    x ^= x >> 15;
-    x *= 0x846ca68b;
-    x ^= x >> 16;
-    return x;
+    return PCG_Hash(uint3(x, x + 0x9E3779B9u, 0x85EBCA6Bu));
 }
 
+uint NextUInt(inout PathRNG rng)
+{
+    rng.state = Hash(rng.state + 1u);
+    return rng.state;
+}
 
 float RandomFloat(uint seed)
 {
-    return (Hash(seed) & 0x00FFFFFF) / 16777216.0;
+    return HashToFloat(Hash(seed));
 }
 
 float NextFloat(inout PathRNG rng)
 {
-    rng.state = Hash(rng.state);
-    return (rng.state & 0x00FFFFFF) / 16777216.0;
+    return HashToFloat(NextUInt(rng));
 }
 
 float2 NextFloat2(inout PathRNG rng)
@@ -150,7 +155,8 @@ bool isUpscalingEnabled() {
 }
 
 float2 getCameraJitter(uint2 pixelCoord) {
-    float2 sample = SampleSTBN2(pixelCoord, g_view.frameCount, 8u);
+    uint3 hashInput = uint3(pixelCoord, g_view.frameCount + 8u);
+    float2 sample = HashToFloat2(hashInput);
     return sample - 0.5f;
 }
 
@@ -223,6 +229,7 @@ float2 unpackVertexUV(uint packedUV, bool packedUvIncludesBias = false) {
 
 // Determine whether g_view.directionToSun is actually direction to moon.
 bool isMoonPrimaryLight() {
+    if (abs(g_view.directionToSun.y) > 0.999) return g_view.skyTextureW > 0.9;
     float angle1 = g_view.sunAzimuth - PI;
     float angle2 = atan2(g_view.directionToSun.z, g_view.directionToSun.x);
     float angleDiff = abs(angle1-angle2);

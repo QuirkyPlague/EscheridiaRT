@@ -565,9 +565,11 @@ surfaceInfo.normal =
     surfaceInfo.color = color.rgb;
     surfaceInfo.color = pow(surfaceInfo.color, 2.2);
     surfaceInfo.alpha = color.a;
-    #if WHITE_WORLD == 1
-     surfaceInfo.color = 1.0;
-     #endif
+
+    #if WHITE_FURNACE == 1
+        surfaceInfo.color = 1.0;
+        surfaceInfo.emissive = 0.0;
+    #endif
 
     return surfaceInfo;
 }

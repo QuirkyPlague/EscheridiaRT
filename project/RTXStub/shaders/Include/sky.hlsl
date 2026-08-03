@@ -283,13 +283,17 @@ float3 getSun(float3 dir) {
 }
 
 float3 skyScattering1(float3 pos) {
-    float3 dir = pos;
-
+#if WHITE_FURNACE == 1
+    return 1.0;
+#else
+   
+    float3 dir = normalize(pos);
     float3 sunDir = getTrueDirectionToSun();
     float3 moonDir = getTrueDirectionToMoon();
 
     float VoL = dot(dir, sunDir);
     float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 12;
+
 
     float upPos = saturate(dir.y);
     float downPos = clamp(dir.y, -1.0, 0.0);
@@ -437,6 +441,7 @@ float3 skyScattering1(float3 pos) {
     color = pow(color, 1.5);
     color *= skyLuminance / dot(color, 1.0);
     return color + sun;
+    #endif
 }
 
 #endif // SKY_HLSL

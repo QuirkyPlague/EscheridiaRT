@@ -26,6 +26,7 @@
 
 #include "Include/Renderer.hlsl"
 #include "Include/Util.hlsl"
+#include "Include/DOF.hlsl"
 
 [numthreads(4, 8, 1)]
 void PrimaryCheckerboardRayGenInline(
@@ -44,9 +45,16 @@ void PrimaryCheckerboardRayGenInline(
     
    
      RayDesc rayDesc;
-    rayDesc.Direction = rayDirFromNDC(getNDCjittered(dispatchThreadID.xy));
-    rayDesc.Origin = g_view.viewOriginSteveSpace;
-    rayDesc.TMin = 0; rayDesc.TMax = 10000;
+     PathRNG rngState;
+        rayDesc.Direction = rayDirFromNDC(getNDCjittered(dispatchThreadID.xy));
+        rayDesc.Origin = g_view.viewOriginSteveSpace;
+
+        /*
+        float3 dofOrigin, dofDirection;
+        computeDOFRay(dispatchThreadID.xy, rayDesc.Origin, rayDesc.Direction, rngState, dofOrigin, dofDirection);
+        rayDesc.Origin = dofOrigin;
+        rayDesc.Direction = dofDirection;
+        */
 
         
              

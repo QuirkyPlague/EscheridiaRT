@@ -2,6 +2,9 @@
 #define SETTINGS_HLSL
 
 
+// White furnace test
+#define WHITE_FURNACE 0
+
 #define MAX_TRACE_DISTANCE      1000
 // Lighting Parameters
 #define SUN_AZIMUTH               (0.725)                   // Vanilla: 0.0
