@@ -61,6 +61,14 @@ float3 TonemapACES(float3 rgb) {
     return ACESFitted(rgb);
 }
 
+float3 linearToSRGB(float3 c) {
+    // Full linear to sRGB function
+    return max(lerp(12.92 * c, 1.055 * pow(c, 1.0 / 2.4) - 0.055, (c > 0.0031308)), 0);
+    
+    // Approximation
+    //return max(pow(c, 1.0 / 2.2), 0);
+}
+
 // MIT License
 //
 // Copyright (c) 2024 Missing Deadlines (Benjamin Wrensch)

@@ -136,7 +136,7 @@
     void RenderSky(inout RayState rayState)
     {
         if (all(rayState.throughput == 0)) return;
-
+      
         float3 finalColor = skyScattering1(rayState.rayDesc.Direction);
         
         rayState.color += rayState.throughput * finalColor;
@@ -526,12 +526,15 @@
             float3 kD1 = (1.0 - F) * (1.0 - surfaceInfo.metalness);
             float3 diffuse = kD1 * surfaceInfo.color * (diffMultiplier); 
             float3 brdf = diffuse + specular; 
-            float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 635; 
+            float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 635 * SUN_INTENSITY; 
+             
+            
             sunlightColor.rgb *= sunlightColor.a;
             float pdfSun = max(PDF_SunCone(), 1e-4); 
 
 
             float3 sunContribution = sunlightColor.rgb * brdf * saturate(NdotL1) * payload.transmission / pdfSun;
+          
             float pdfBRDF;
             if(Xi.x > specularProbability)
             {
@@ -548,6 +551,11 @@
             float w = MISWeight(pdfSun, pdfBRDF);
 
             sunContribution *= w;
+             
+            #if ENABLE_SUNLIGHT == 0
+            sunContribution = 0;
+            #endif
+            
             float sunLuma = max(luminance(sunContribution), 1e-4);
 
             totalRadiance += sunContribution;

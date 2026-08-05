@@ -49,13 +49,14 @@ void PrimaryCheckerboardRayGenInline(
         rayDesc.Direction = rayDirFromNDC(getNDCjittered(dispatchThreadID.xy));
         rayDesc.Origin = g_view.viewOriginSteveSpace;
 
-        /*
+        
         float3 dofOrigin, dofDirection;
         computeDOFRay(dispatchThreadID.xy, rayDesc.Origin, rayDesc.Direction, rngState, dofOrigin, dofDirection);
         rayDesc.Origin = dofOrigin;
         rayDesc.Direction = dofDirection;
-        */
+        
 
+         rayDesc.TMin = 0; rayDesc.TMax = 10000;
         
              
      color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy, firstHitDist);

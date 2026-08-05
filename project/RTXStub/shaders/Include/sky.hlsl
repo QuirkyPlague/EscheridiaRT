@@ -267,7 +267,7 @@ float3 getSun(float3 dir) {
     sun *
     limbDarkening *
     sunColor *
-    30.0 *
+    20.0 *
     sunHeightFactor;
     float moon = smoothstep(
         0.0002 * 0.86,
@@ -292,7 +292,7 @@ float3 skyScattering1(float3 pos) {
     float3 moonDir = getTrueDirectionToMoon();
 
     float VoL = dot(dir, sunDir);
-    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 12;
+    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 15;
 
 
     float upPos = saturate(dir.y);

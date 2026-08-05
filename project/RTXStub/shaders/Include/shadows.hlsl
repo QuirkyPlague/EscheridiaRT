@@ -67,9 +67,9 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload) {
 
 
             transmission *= lerp(surfaceInfo.color, 0..xxx, surfaceInfo.alpha);
-
-            if (!any(transmission))
-            q.CommitNonOpaqueTriangleHit();
+            continue;
+            
+         
         }
         else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
             GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
@@ -80,9 +80,8 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload) {
             caustics = calcWaterCaustics(mad(getUnderwaterDirectionToSun(), hitInfo.rayT, ray.Origin), hitInfo.rayT);
 
             transmission *= waterExtinction * caustics;
-
-            if (!any(transmission))
-            q.CommitNonOpaqueTriangleHit();
+           continue;
+            
         }
         else {
             q.CommitNonOpaqueTriangleHit();

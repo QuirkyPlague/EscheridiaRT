@@ -1,12 +1,33 @@
+ /*
+    vec2 ndcCoord = (fragInput.texcoord0 - vec2(0.0,0.0)) * vec2(2.0,2.0);
+	vec2 offset = ndcCoord * ndcCoord * sign(ndcCoord) * CHROMATIC_ABERRATION_INTENSITY;
+	float redAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset, 0.0, 1.0)).r;
+	float greenAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset * 0.785, 0.0, 1.0)).g;
+	float blueAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset * 0.677, 0.0, 1.0)).b;
+	fragOutput.Color0.rgb = float3(redAberrated, greenAberrated, blueAberrated);
+    */
+    
+/*
+* Available Macros:
+*
+* Passes:
+* - TONE_MAPPING_PASS (not used)
+*/
+
 $input v_texcoord0
 
 #include "../../include/bgfx_shader.sh"
+#include "../../include/common.sc"
+#include "../../RTXStub/shaders/Include/Settings.hlsl"
+// Bloom strength
 
-/*
-Macros:
-TONE_MAPPING_PASS
-*/
+#define BLOOM_MULTIPLIER 10.0
 
+
+uniform vec4 gToneMappingDebugMode;
+uniform vec4 gToneMappingSaturation;
+uniform vec4 gToneMappingShadowContrastEnd;
+uniform vec4 gToneMappingShadowContrast;
 uniform vec4 RenderMode;
 uniform vec4 ScreenSize;
 uniform vec4 gBloomMultiplier;
@@ -14,14 +35,9 @@ uniform vec4 gColorGradingEnabled;
 uniform vec4 gPerformSRGBConversion;
 uniform vec4 gToneMappingColorBalance;
 uniform vec4 gToneMappingContrast;
-uniform vec4 gToneMappingDebugMode;
 uniform vec4 gToneMappingFilmicSaturationCorrection;
 uniform vec4 gToneMappingGamma;
 uniform vec4 gToneMappingIntensity;
-uniform vec4 gToneMappingSaturation;
-uniform vec4 gToneMappingShadowContrast;
-uniform vec4 gToneMappingShadowContrastEnd;
-
 vec4 ViewRect;
 mat4 Proj;
 mat4 View;
@@ -50,13 +66,23 @@ struct FragmentOutput {
 SAMPLER2D_AUTOREG(s_RasterColor);
 SAMPLER2D_AUTOREG(s_gBloomBuffer);
 SAMPLER2D_AUTOREG(s_gRasterizedInput);
-SAMPLER2D_AUTOREG(s_gToneCurve);
+SAMPLER2D_AUTOREG(s_gToneCurve); // LUT from histogram based tonemapper
 
 void Frag(FragmentInput fragInput, inout FragmentOutput fragOutput) {
+     vec2 ndcCoord = (fragInput.texcoord0 - vec2(0.0,0.0)) * vec2(2.0,2.0);
+	vec2 offset = ndcCoord * ndcCoord * sign(ndcCoord) * CHROMATIC_ABERRATION_INTENSITY;
+	float redAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset, 0.0, 1.0)).r;
+	float greenAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset * 0.785, 0.0, 1.0)).g;
+	float blueAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset * 0.677, 0.0, 1.0)).b;
+	vec3 hdr = vec3(redAberrated, greenAberrated, blueAberrated);
     vec4 raster = texture2D(s_gRasterizedInput, fragInput.texcoord0);
-    vec3 color = texture2D(s_RasterColor, fragInput.texcoord0).rgb;
-    color = color * (1.0 - raster.a) + raster.rgb; // Premultiplied blending
-    fragOutput.Color0.rgb = color;
+    //raster.rgb = linearToSRGB(ACESFittedTonemap(raster.rgb));
+    vec3 bloom = upscaleBloomFiltered(fragInput.texcoord0, s_gBloomBuffer, ScreenSize.xy);
+    
+    hdr += BLOOM_MULTIPLIER * gBloomMultiplier.x * bloom;
+    
+    vec3 outputColorSRGB = linearToSRGB(tonemapAgX(hdr));
+    fragOutput.Color0.rgb = outputColorSRGB;
 }
 
 void main() {
@@ -88,4 +114,3 @@ void main() {
     Frag(fragmentInput, fragmentOutput);
     gl_FragColor = fragmentOutput.Color0;
 }
-

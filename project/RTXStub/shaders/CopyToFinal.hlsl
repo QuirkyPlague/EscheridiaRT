@@ -43,13 +43,15 @@ void CopyToFinal(
     if (isUpscalingEnabled()) {
         // Pick up upscaled results from inputThisFrameTAAHistory
         color = inputThisFrameTAAHistory[dispatchThreadID.xy];
-         color.rgb = tonemapAgX(color.rgb);
-        color.rgb = pow(color.rgb, 1.0/2.2); // Gamma correction.
+         //color.rgb = tonemapAgX(color.rgb);
+        //color.rgb = linearToSRGB(color.rgb); // Gamma correction.
         outputBufferFinal[dispatchThreadID.xy] = color;
     } else {
         color = outputBufferFinal[dispatchThreadID.xy];
-            color.rgb = tonemapAgX(color.rgb);
-    color.rgb = pow(color.rgb, 1.0/2.2); // Gamma correction.
-    outputBufferFinal[dispatchThreadID.xy] = color;
+            //color.rgb = tonemapAgX(color.rgb);
+    //color.rgb = pow(color.rgb, 1.0/2.2); // Gamma correction.
+        //color.rgb = linearToSRGB(color.rgb); // Gamma correction.
+        outputBufferFinal[dispatchThreadID.xy] = color;
     }
+   
 }
