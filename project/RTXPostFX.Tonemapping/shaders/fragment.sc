@@ -78,10 +78,13 @@ void Frag(FragmentInput fragInput, inout FragmentOutput fragOutput) {
     vec4 raster = texture2D(s_gRasterizedInput, fragInput.texcoord0);
     //raster.rgb = linearToSRGB(ACESFittedTonemap(raster.rgb));
     vec3 bloom = upscaleBloomFiltered(fragInput.texcoord0, s_gBloomBuffer, ScreenSize.xy);
-    
     hdr += BLOOM_MULTIPLIER * gBloomMultiplier.x * bloom;
-    
-    vec3 outputColorSRGB = linearToSRGB(tonemapAgX(hdr));
+    #if DISABLE_RASTER_OBJECTS == 1
+    hdr = linearToSRGB(tonemapAgX(hdr))
+    #else
+    hdr = mix(linearToSRGB(tonemapAgX(hdr)), raster.rgb, raster.a);
+    #endif
+    vec3 outputColorSRGB = hdr;
     fragOutput.Color0.rgb = outputColorSRGB;
 }
 

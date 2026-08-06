@@ -568,7 +568,7 @@
             }
 
             // Apply emissive lighting.
-            float3 emission = surfaceInfo.color * surfaceInfo.emissive * 100;
+            float3 emission = surfaceInfo.color * surfaceInfo.emissive * EMISSION_STENGTH;
 
             
 
@@ -654,7 +654,7 @@
         float3 directLight = 0;
         float3 rayColor = 1.0;
         // Limit to 100 overlapping translucent surfaces.
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 4; i++)
         {
             
             q.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, rayState.instanceMask, rayState.rayDesc);

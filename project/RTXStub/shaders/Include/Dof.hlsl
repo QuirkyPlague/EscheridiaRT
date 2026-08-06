@@ -16,12 +16,11 @@ float2 randomPointInCircle(inout PathRNG rngState)
 
 void computeDOFRay(uint2 pixelCoord, float3 rayOrigin, float3 rayDir, in PathRNG rngState, out float3 outOrigin, out float3 outDirection)
 {
-	for(int i = 0; i < DOF_SAMPLES; i++)
-	{
+	
 		uint baseSeed = uint(pixelCoord.x) + uint(pixelCoord.y) * g_view.renderResolution.x;
 		baseSeed ^= g_view.frameCount * 0x9E3779B9u;
-		baseSeed ^= uint(i) * 0x85EBCA6Bu;
-		rngState.state = PCG_Hash(uint3(baseSeed, g_view.frameCount, uint(i)));
+		baseSeed ^= uint(1) * 0x85EBCA6Bu;
+		rngState.state = PCG_Hash(uint3(baseSeed, g_view.frameCount, uint(1)));
 
 		float3 focalPoint = rayOrigin + rayDir * DOF_FOCAL_DISTANCE;
 
@@ -33,7 +32,7 @@ void computeDOFRay(uint2 pixelCoord, float3 rayOrigin, float3 rayDir, in PathRNG
 		float2 apertureSample = randomPointInCircle(rngState) * DOF_BLUR_STRENGTH / g_view.renderResolution.x; 
 		outOrigin = rayOrigin + rightVector * apertureSample.x + upVector * apertureSample.y;
 		outDirection = normalize(focalPoint - outOrigin);
-	}
+	
 }
 	
 	

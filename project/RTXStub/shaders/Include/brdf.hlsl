@@ -124,6 +124,12 @@ float G1_SmithGGX(float NdotV, float roughness) {
         max(NdotV + sqrt(a2 + (1.0 - a2) * NdotV2), 0.00001);
 }
 
+float G_Smith(float NdotV, float NdotL, float roughness) {
+    float ggx2 = G1_SmithGGX(NdotV, roughness);
+    float ggx1 = G1_SmithGGX(NdotL, roughness);
+    return ggx1 * ggx2;
+}
+
 float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
     float D = D_GGX(NdotH, roughness);
     float G1 = G1_SmithGGX(NdotV, roughness);
@@ -133,6 +139,24 @@ float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
 
 float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
     return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
+}
+
+
+float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {
+    float a = roughness * roughness;
+
+    // Analytical directional albedo E(x) approximations
+    float E_v = saturate(1.0 - a * (1.0 - NdotV));
+    float E_l = saturate(1.0 - a * (1.0 - NdotL));
+    float E_avg = saturate(1.0 - a * 0.5);
+
+    // Directional average of Fresnel
+    float3 F_avg = F0 + (1.0 - F0) / 21.0;
+
+    // Evaluate multiple scattering term
+    float3 Fms = (F_avg * (1.0 - E_v) * (1.0 - E_l)) / (PI * (1.0 - F_avg * (1.0 - E_avg)) + 1e-5);
+
+    return Fms;
 }
 
 
@@ -205,27 +229,6 @@ float3 SampleGGXMicrofacetNormal(float3 V, float3 N, float roughness, float2 u) 
     return dot(H, V) >= 0.0 ? H : -H;
 }
 
-float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {
-    float a = roughness * roughness;
 
-    // Analytical directional albedo E(x) approximations
-    float E_v = saturate(1.0 - a * (1.0 - NdotV));
-    float E_l = saturate(1.0 - a * (1.0 - NdotL));
-    float E_avg = saturate(1.0 - a * 0.5);
-
-    // Directional average of Fresnel
-    float3 F_avg = F0 + (1.0 - F0) / 21.0;
-
-    // Evaluate multiple scattering term
-    float3 Fms = (F_avg * (1.0 - E_v) * (1.0 - E_l)) / (PI * (1.0 - F_avg * (1.0 - E_avg)) + 1e-5);
-
-    return Fms;
-}
-
-float G_Smith(float NdotV, float NdotL, float roughness) {
-    float ggx2 = G_SchlickGGX(NdotV, roughness);
-    float ggx1 = G_SchlickGGX(NdotL, roughness);
-    return ggx1 * ggx2;
-}
 
 #endif //BRDF_HLSL

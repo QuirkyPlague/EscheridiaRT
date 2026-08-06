@@ -5,6 +5,8 @@
 // White furnace test
 #define WHITE_FURNACE 0
 
+#define DISABLE_RASTER_OBJECTS 0
+
 // Lighting Parameters
 #define SUN_AZIMUTH               (0.725)                   // Vanilla: 0.0
 
@@ -15,12 +17,12 @@
 // 0.0-5.0 = close range shots
 // 6.0 - 15.0 midrange shot
 // 16.0+ = long range shot
-#define DOF_FOCAL_DISTANCE 0.5f
+#define DOF_FOCAL_DISTANCE 2.5f
 
 #define CHROMATIC_ABERRATION_INTENSITY 0.00373;
 // Blur does not scale with focal distance
 // Longer focal distance needs more blur if you want a very focused shot
-#define DOF_BLUR_STRENGTH 1.25f 
+#define DOF_BLUR_STRENGTH 21.725f 
 #define DOF_SAMPLES 2
 
 #define RAY_COUNT 24
@@ -39,7 +41,7 @@
 
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
-#define EMISSION_STENGTH  350
+#define EMISSION_STENGTH  100
 
 
 #define VL_FOG_STEPS 4
