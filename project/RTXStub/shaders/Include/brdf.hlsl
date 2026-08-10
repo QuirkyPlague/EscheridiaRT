@@ -1,234 +1,371 @@
 #ifndef BRDF_HLSL
-#define BRDF_HLSL
+    #define BRDF_HLSL
 
-#include "sky.hlsl"
-#include "shadows.hlsl"
+    #include "sky.hlsl"
+    #include "shadows.hlsl"
 
-#define BRDF_PI radians(180.0)
+    #define BRDF_PI radians(180.0)
+    #define BRDF_FIX 1e-10
 
+    struct ShadingFrame
+    {
+        float3 T;
+        float3 B;
+        float3 Ng;
+        float3 Ns;
+    };
 
-float DistributionGGX(float3 N, float3 H, float roughness) {
-  float r = max(roughness, 0.001);
-  float a = r * r;
-  float a2 = a * a;
-  float NdotH = max(dot(N, H), 1e-6);
-  float NdotH2 = NdotH * NdotH;
+    #define BRDF_Pow5(x) pow(saturate(1.0 - x), 5.0)
 
-  float num = a2;
-  float denom = NdotH2 * (a2 - 1.0) + 1.0;
-  denom = PI * denom * denom;
+    float BRDF_Luminance(float3 linearColor)
+    {
+        return dot(linearColor, float3(0.3, 0.59, 0.11));
+    }
 
-  return num / denom;
-}
+    float BRDF_F_Shadowing(float3 Rf0)
+    {
+        return saturate(50.0 * BRDF_Luminance(Rf0));
+    }
 
-float GeometrySchlickGGX(float NdotV, float roughness) {
-  float r = max(roughness, 0.001) + 1.0;
-  float k = r * r / 8.0;
+    float3 fresnelSchlick(float cosTheta, float3 F0) {
+        float f = BRDF_F_Shadowing(F0);
 
-  float num = NdotV;
-  float denom = NdotV * (1.0 - k) + k;
+        return F0 + (f - F0) * BRDF_Pow5(cosTheta);
+    }
 
-  return num / denom;
-}
-float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
-  float NdotV = max(dot(N, V), 1e-6);
-  float NdotL = max(dot(N, L), 1e-6);
-  float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-  float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-
-  return ggx1 * ggx2;
-}
-
-
-
-float BurleyFrostbite(float roughness, float n_dot_l, float n_dot_v, float v_dot_h)
+    float3 BRDF_F_Fresnel(float cosa, float3 Rf0)
 {
-    float energyBias = 0.5 * roughness;
-    float energyFactor = lerp(1.0, 1.0 / 1.51, roughness);
+    float3 nu = sqrt(Rf0);
+    nu = (1.0 + nu) / (1.0 - nu + BRDF_FIX);
 
-    float FD90MinusOne = energyBias + 2.0 * v_dot_h * v_dot_h * roughness - 1.0f;
-    float FDL = 1.0f + (FD90MinusOne * pow(1.0f - n_dot_l, 5.0f));
-    float FDV = 1.0f + (FD90MinusOne * pow(1.0f - n_dot_v, 5.0f));
+    float k = cosa * cosa - 1.0;
+    float3 g = sqrt(nu * nu + k);
+    float3 a = (g - cosa) / (g + cosa);
+    float3 c = (g * cosa + k) / (g * cosa - k);
 
-    return FDL * FDV * energyFactor;
+    return 0.5 * a * a * (c * c + 1.0);
 }
 
-//from Zombye
-float3 SampleVNDFGGX(float3 V, float alpha, float2 u) {
-    float3 Vh = safeNormalize(float3(alpha * V.x, alpha * V.y, V.z), float3(0, 0, 1));
+    float DistributionGGX(float3 N, float3 H, float roughness) {
+        float r = max(roughness, 0.001);
+        float a = r * r;
+        float a2 = a * a;
+        float NdotH = max(dot(N, H), 1e-6);
+        float NdotH2 = NdotH * NdotH;
 
-    float lengthSq = Vh.x * Vh.x + Vh.y * Vh.y;
-    float3 tangent = lengthSq > 0 ? float3(-Vh.y, Vh.x, 0) / sqrt(lengthSq) : float3(1, 0, 0);
-    float3 bitangent = cross(Vh, tangent);
+        float num = a2;
+        float denom = NdotH2 * (a2 - 1.0) + 1.0;
+        denom = PI * denom * denom;
 
-    float r = sqrt(u.x);
-    float phi = 2.0 * PI * u.y;
-    float t1 = r * cos(phi);
-    float t2 = r * sin(phi);
-    float s = 0.5 * (1.0 + Vh.z);
-    t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
+        return num / denom;
+    }
 
-    float3 Nh = t1 * tangent
+    float GeometrySchlickGGX(float NdotV, float roughness) {
+        float r = max(roughness, 0.001) + 1.0;
+        float k = r * r / 8.0;
+
+        float num = NdotV;
+        float denom = NdotV * (1.0 - k) + k;
+
+        return num / denom;
+    }
+    float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
+        float NdotV = max(dot(N, V), 1e-6);
+        float NdotL = max(dot(N, L), 1e-6);
+        float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+        float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+        return ggx1 * ggx2;
+    }
+
+
+
+    float BurleyFrostbite(float roughness, float n_dot_l, float n_dot_v, float v_dot_h)
+    {
+        float energyBias = 0.5 * roughness;
+        float energyFactor = lerp(1.0, 1.0 / 1.51, roughness);
+
+        float FD90MinusOne = energyBias + 2.0 * v_dot_h * v_dot_h * roughness - 1.0f;
+        float FDL = 1.0f + (FD90MinusOne * pow(1.0f - n_dot_l, 5.0f));
+        float FDV = 1.0f + (FD90MinusOne * pow(1.0f - n_dot_v, 5.0f));
+
+        return FDL * FDV * energyFactor;
+    }
+
+    //from Zombye
+    float3 SampleVNDFGGX(float3 V, float alpha, float2 u) {
+        float3 Vh = safeNormalize(float3(alpha * V.x, alpha * V.y, V.z), float3(0, 0, 1));
+
+        float lengthSq = Vh.x * Vh.x + Vh.y * Vh.y;
+        float3 tangent = lengthSq > 0 ? float3(-Vh.y, Vh.x, 0) / sqrt(lengthSq) : float3(1, 0, 0);
+        float3 bitangent = cross(Vh, tangent);
+
+        float r = sqrt(u.x);
+        float phi = 2.0 * PI * u.y;
+        float t1 = r * cos(phi);
+        float t2 = r * sin(phi);
+        float s = 0.5 * (1.0 + Vh.z);
+        t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
+
+        float3 Nh = t1 * tangent
         + t2 * bitangent
         + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
 
-    return safeNormalize(float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)), float3(0, 0, 1));
+        return safeNormalize(float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)), float3(0, 0, 1));
+    }
+
+    float DisneyDiffuse(float NdotL, float NdotV, float LdotH, float roughness) {
+        float energyBias = lerp(0.0, 0.5, roughness);
+        float energyFactor = lerp(1.0, 1.0 / 1.51, roughness);
+        float fd90 = energyBias + 2.0 * LdotH * LdotH * roughness;
+        float lightScatter = 1.0 + (fd90 - 1.0) * pow(clamp(1.0 - NdotL, 0.0, 1.0), 5.0);
+        float viewScatter = 1.0 + (fd90 - 1.0) * pow(clamp(1.0 - NdotV, 0.0, 1.0), 5.0);
+        return (lightScatter * viewScatter * energyFactor / PI);
+    }
+
+    float3x3 tbnMatrix(float3 N) {
+        float3 up = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+        float3 T = normalize(cross(up, N));
+        float3 B = cross(N, T);
+        return float3x3(T, B, N);
+    }
+
+
+
+
+
+    float BRDF_D_GGX(float roughness, float n_dot_h)
+{
+    float m = roughness * roughness;
+    float m2 = m * m;
+    float d = (n_dot_h * m2 - n_dot_h) * n_dot_h + 1.0;
+
+    return m2 / (d * d + BRDF_FIX);
 }
 
-float DisneyDiffuse(float NdotL, float NdotV, float LdotH, float roughness) {
-    float energyBias = lerp(0.0, 0.5, roughness);
-    float energyFactor = lerp(1.0, 1.0 / 1.51, roughness);
-    float fd90 = energyBias + 2.0 * LdotH * LdotH * roughness;
-    float lightScatter = 1.0 + (fd90 - 1.0) * pow(clamp(1.0 - NdotL, 0.0, 1.0), 5.0);
-    float viewScatter = 1.0 + (fd90 - 1.0) * pow(clamp(1.0 - NdotV, 0.0, 1.0), 5.0);
-    return (lightScatter * viewScatter * energyFactor / PI);
+// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
+float BRDF_G_Schlick(float roughness, float n_dot_l, float n_dot_v, float v_dot_h, float n_dot_h)
+{
+    float m = roughness * roughness;
+
+    // original form
+    //float k = m * sqrt(2.0 / BRDF_PI);
+
+    // UE4: tuned to match GGX [Karis]
+    float k = m * 0.5;
+
+    float a = n_dot_l * (1.0 - k) + k;
+    float b = n_dot_v * (1.0 - k) + k;
+
+    return 0.25 / (a * b + BRDF_FIX);
 }
 
-float3x3 tbnMatrix(float3 N) {
-  float3 up = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
-  float3 T = normalize(cross(up, N));
-  float3 B = cross(N, T);
-  return float3x3(T, B, N);
+// Smith term for GGX modified by Disney to be less "hot" for small roughness values
+// [Smith 1967, "Geometrical shadowing of a random rough surface"]
+// [Burley 2012, "Physically-Based Shading at Disney"]
+float BRDF_G_Smith(float roughness, float n_dot_l, float n_dot_v, float v_dot_h, float n_dot_h)
+{
+    float m = roughness * roughness;
+    float m2 = m * m;
+    float a = n_dot_v + sqrt(n_dot_v * (n_dot_v - n_dot_v * m2) + m2);
+    float b = n_dot_l + sqrt(n_dot_l * (n_dot_l - n_dot_l * m2) + m2);
+
+    return 1.0 / (a * b);
 }
 
 
+    float D_GGX(float NdotH, float roughness) {
+        float r = max(roughness, 0.001);
+        float a = r * r;
+        float a2 = a * a;
+        float NdotH2 = NdotH * NdotH;
+        float num = a2;
+        float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+        denom = PI * denom * denom;
+        return num / max(denom, 0.0000001);
+    }
 
+    float G_SchlickGGX(float NdotV, float roughness) {
+        float r = max(roughness, 0.001) + 1.0;
+        float k = (r * r) / 8.0;
+        float num = NdotV;
+        float denom = NdotV * (1.0 - k) + k;
+        return num / denom;
+    }
 
-
-
-
-float D_GGX(float NdotH, float roughness) {
-    float r = max(roughness, 0.001);
-    float a = r * r;
-    float a2 = a * a;
-    float NdotH2 = NdotH * NdotH;
-    float num = a2;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-    return num / max(denom, 0.0000001);
-}
-
-float G_SchlickGGX(float NdotV, float roughness) {
-    float r = max(roughness, 0.001) + 1.0;
-    float k = (r * r) / 8.0;
-    float num = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-    return num / denom;
-}
-
-float G1_SmithGGX(float NdotV, float roughness) {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float NdotV2 = NdotV * NdotV;
-    return (2.0 * NdotV) /
+    float G1_SmithGGX(float NdotV, float roughness) {
+        float a = roughness * roughness;
+        float a2 = a * a;
+        float NdotV2 = NdotV * NdotV;
+        return (2.0 * NdotV) /
         max(NdotV + sqrt(a2 + (1.0 - a2) * NdotV2), 0.00001);
-}
+    }
 
-float G_Smith(float NdotV, float NdotL, float roughness) {
-    float ggx2 = G1_SmithGGX(NdotV, roughness);
-    float ggx1 = G1_SmithGGX(NdotL, roughness);
-    return ggx1 * ggx2;
-}
+    float G1_TangentFacet(float3 wi,float3 wm,float3 wg,float3 wp,float3 wt)
+    {
+        float H = step(0.0, dot(wi, wm));
+        float pDotG = max(dot(wp, wg), 1e-5);
+        float tangentLength = sqrt(max(1.0 - pDotG * pDotG, 0.0));
+        float ap = max(dot(wi, wp), 0.0) / pDotG;
+        float at = max(dot(wi, wt), 0.0) / max(tangentLength, 1e-5);
+        float projectedArea = ap + at;
+        float visibility =min(1.0,max(dot(wi, wg), 0.0) / max(projectedArea, 1e-5));
+        return H * visibility;
+    }
 
-float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
-    float D = D_GGX(NdotH, roughness);
-    float G1 = G1_SmithGGX(NdotV, roughness);
+    
 
-    return (D * G1 * max(0.0, VdotH)) / max(NdotV, 0.00001);
-}
+    float G_Smith(float NdotV, float NdotL, float roughness) {
+        float ggx2 = G1_SmithGGX(NdotV, roughness);
+        float ggx1 = G1_SmithGGX(NdotL, roughness);
+        return ggx1 * ggx2;
+    }
 
-float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
-    return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
-}
+    float3 EvaluateFacetBRDF(float3 wi,float3 wo,float3 wm,float3 F0,float roughness)
+    {
+        float NoL = max(dot(wm, wi), 0.0001);
+        float NoV = max(dot(wm, wo), 0.0001);
 
+        float3 H = safeNormalize(wi + wo, wm);
 
-float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {
-    float a = roughness * roughness;
+        float NoH = max(dot(wm, H), 0.0001);
+        float VoH = max(dot(wo, H), 0.0001);
 
-    // Analytical directional albedo E(x) approximations
-    float E_v = saturate(1.0 - a * (1.0 - NdotV));
-    float E_l = saturate(1.0 - a * (1.0 - NdotL));
-    float E_avg = saturate(1.0 - a * 0.5);
+        float3 F = fresnelSchlick(VoH, F0);
+        float D = D_GGX(NoH, roughness);
+        float G = G_Smith(NoV, NoL, roughness);
 
-    // Directional average of Fresnel
-    float3 F_avg = F0 + (1.0 - F0) / 21.0;
+        return (F * D * G) /
+        max(4.0 * NoV * NoL, 1e-6);
+    }
 
-    // Evaluate multiple scattering term
-    float3 Fms = (F_avg * (1.0 - E_v) * (1.0 - E_l)) / (PI * (1.0 - F_avg * (1.0 - E_avg)) + 1e-5);
+    float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
+        float D = D_GGX(NdotH, roughness);
+        float G1 = G1_SmithGGX(NdotV, roughness);
 
-    return Fms;
-}
+        return (D * G1 * max(0.0, VdotH)) / max(NdotV, 0.00001);
+    }
 
-
-float BRDF_Luminance(float3 linearColor)
-{
-    return dot(linearColor, float3(0.3, 0.59, 0.11));
-}
-
-#define BRDF_Pow5(x) pow(saturate(1.0 - x), 5.0)
-
-float BRDF_F_Shadowing(float3 Rf0)
-{
-    return saturate(50.0 * BRDF_Luminance(Rf0));
-}
-
-float3 fresnelSchlick(float cosTheta, float3 F0) {
-  float f = BRDF_F_Shadowing(F0);
-
-    return F0 + (f - F0) * BRDF_Pow5(cosTheta);
-}
+    float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
+        return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
+    }
 
 
-float3 CorrectShadingNormal(
+    float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {
+        float a = roughness * roughness;
+
+        // Analytical directional albedo E(x) approximations
+        float E_v = saturate(1.0 - a * (1.0 - NdotV));
+        float E_l = saturate(1.0 - a * (1.0 - NdotL));
+        float E_avg = saturate(1.0 - a * 0.5);
+
+        // Directional average of Fresnel
+        float3 F_avg = F0 + (1.0 - F0) / 21.0;
+
+        // Evaluate multiple scattering term
+        float3 Fms = (F_avg * (1.0 - E_v) * (1.0 - E_l)) / (PI * (1.0 - F_avg * (1.0 - E_avg)) + 1e-5);
+
+        return Fms;
+    }
+
+
+    
+
+    
+    
+
+
+    float3 CorrectShadingNormal(
     float3 wo,
     float3 wi,
     float3 Ng,
     float3 Ns)
-{
-    float NoV  = saturate(dot(Ng, wo));
-    float NoL  = saturate(dot(Ng, wi));
+    {
+        float NoV  = saturate(dot(Ng, wo));
+        float NoL  = saturate(dot(Ng, wi));
 
-    float NsV  = saturate(dot(Ns, wo));
-    float NsL  = saturate(dot(Ns, wi));
+        float NsV  = saturate(dot(Ns, wo));
+        float NsL  = saturate(dot(Ns, wi));
 
-    float scaleV = NoV / max(NsV, 1e-4);
-    float scaleL = NoL / max(NsL, 1e-4);
+        float scaleV = NoV / max(NsV, 1e-4);
+        float scaleL = NoL / max(NsL, 1e-4);
 
-    return Ns * min(scaleV, scaleL);
-}
+        return Ns * min(scaleV, scaleL);
+    }
 
-float MISWeight(float pdfA, float pdfB)
-{
-    pdfA *= pdfA;
-    pdfB *= pdfB;
+    float MISWeight(float pdfA, float pdfB)
+    {
+        pdfA *= pdfA;
+        pdfB *= pdfB;
 
-    return pdfA / (pdfA + pdfB);
-}
+        return pdfA / (pdfA + pdfB);
+    }
 
-float PDF_CosineHemisphere(float NdotL) {
-    return max(0.0, NdotL) / PI;
-}
+    float PDF_CosineHemisphere(float NdotL) {
+        return max(0.0, NdotL) / PI;
+    }
 
-void BuildOrthonormalBasis(float3 N, out float3 T, out float3 B) {
-    N = safeNormalize(N, float3(0, 1, 0));
-    float3 up = abs(N.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
-    T = safeNormalize(cross(up, N), float3(1, 0, 0));
-    B = cross(N, T);
-}
+    void BuildOrthonormalBasis(float3 N, out float3 T, out float3 B) {
+        N = safeNormalize(N, float3(0, 1, 0));
+        float3 up = abs(N.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
+        T = safeNormalize(cross(up, N), float3(1, 0, 0));
+        B = cross(N, T);
+    }
 
 
-float3 SampleGGXMicrofacetNormal(float3 V, float3 N, float roughness, float2 u) {
-    float alpha = max(roughness * roughness, 0.001);
+    float3 SampleGGXMicrofacetNormal(float3 V, float3 N, float roughness, float2 u) {
+        float alpha = max(roughness * roughness, 0.001);
 
-    float3 T, B;
-    BuildOrthonormalBasis(N, T, B);
+        float3 T, B;
+        BuildOrthonormalBasis(N, T, B);
 
-    float3 Vlocal = float3(dot(V, T), dot(V, B), dot(V, N));
-    float3 Hlocal = SampleVNDFGGX(Vlocal, alpha, u);
-    float3 H = safeNormalize(Hlocal.x * T + Hlocal.y * B + Hlocal.z * N, N);
-    return dot(H, V) >= 0.0 ? H : -H;
-}
+        float3 Vlocal = float3(dot(V, T), dot(V, B), dot(V, N));
+        float3 Hlocal = SampleVNDFGGX(Vlocal, alpha, u);
+        float3 H = safeNormalize(Hlocal.x * T + Hlocal.y * B + Hlocal.z * N, N);
+        return dot(H, V) >= 0.0 ? H : -H;
+    }
 
+    struct BRDFSample
+    {
+        float3 direction;
+        float3 weight;
+    };
+
+    BRDFSample SampleFacetGGX( float3 wi, float3 facetNormal, float roughness, float3 F0, float2 Xi) 
+    { 
+        BRDFSample sample; 
+        float3 facetT; 
+        float3 facetB; 
+        BuildOrthonormalBasis( facetNormal, facetT, facetB);
+        float alpha = max(roughness * roughness, 0.001); 
+        // Transform view direction into the facet's tangent space. 
+        float3 wiLocal = float3( dot(wi, facetT), dot(wi, facetB), dot(wi, facetNormal)); 
+        // Sample the visible GGX microfacet normal. 
+        float3 HLocal = SampleVNDFGGX( wiLocal, alpha, Xi); 
+        // Transform the sampled microfacet normal back to world space. 
+        float3 H = normalize( HLocal.x * facetT + HLocal.y * facetB + HLocal.z * facetNormal); 
+        // Reflect the incoming direction around H. 
+        float3 wo = normalize(reflect(-wi, H)); float NoV = max(dot(facetNormal, wi), 0.0); float NoL = max(dot(facetNormal, wo), 0.0); 
+        // Invalid sample. 
+        if (NoL <= 0.0 || NoV <= 0.0) 
+        { 
+            sample.direction = wo; 
+            sample.weight = 0.0; 
+            return sample; 
+        } 
+        float NoH = max(dot(facetNormal, H), 0.0); 
+        float VoH = max(dot(wi, H), 0.0); 
+        float3 F = fresnelSchlick(VoH, F0); 
+        float D = D_GGX(NoH, roughness); 
+        float G = G_Smith(NoV, NoL, roughness); 
+        float3 f = (F * D * G) / max(4.0 * NoV * NoL, 1e-6); 
+        // PDF of the sampled GGX reflection direction. 
+        float pdf = PDF_GGX_Reflection( NoV, NoH, VoH, roughness); 
+        float3 weight = f * NoL / max(pdf, 1e-6); 
+        sample.direction = wo; 
+        sample.weight = weight; 
+        return sample; 
+    }
 
 
 #endif //BRDF_HLSL

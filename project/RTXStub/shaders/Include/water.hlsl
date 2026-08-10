@@ -118,4 +118,83 @@ float calcWaterCaustics(float3 position, float rayLength) {
     return max(caustics, 0.0);
 }
 
+void EvaluateWaveLayer(
+    float2 origin, float2 dir, float amplitude, float steepness, float wavelength, float speed, float time, 
+    inout float2 guessXZ, inout float3 tangent, inout float3 binormal, inout float totalHeight
+) {
+    float k = (2.0f * 3.14159265f) / wavelength;
+    
+    // Safety check: Scale steepness dynamically to prevent self-intersection loops
+    // Q_max = 1.0 / (amplitude * k)
+    float qMax = 1.0f / max(amplitude * k, 0.0001f);
+    float safeQ = min(steepness, qMax * 0.9f); // Keep it strictly below the loop threshold
+    
+    float c = sqrt(9.81f / k) * speed;
+    
+    // Smooth, calibrated fixed-point inversion loop
+    [unroll]
+    for (int i = 0; i < 3; i++) {
+        float phase = k * (dot(dir, guessXZ) - c * time);
+        guessXZ = origin - (safeQ * amplitude * dir * cos(phase));
+    }
+    
+    float finalPhase = k * (dot(dir, guessXZ) - c * time);
+    float sinP = sin(finalPhase);
+    float cosP = cos(finalPhase);
+    
+    // Accumulate actual height
+    totalHeight += amplitude * sinP;
+    
+    // Correct analytical accumulation of partial derivatives
+    tangent.x -= safeQ * amplitude * k * dir.x * dir.x * sinP;
+    tangent.y += amplitude * k * dir.x * cosP;
+    tangent.z -= safeQ * amplitude * k * dir.x * dir.y * sinP;
+
+    binormal.x -= safeQ * amplitude * k * dir.x * dir.y * sinP;
+    binormal.y += amplitude * k * dir.y * cosP;
+    binormal.z -= safeQ * amplitude * k * dir.y * dir.y * sinP;
+}
+
+// 1. THE HEIGHT FUNCTION
+float calculateGerstnerHeight(float2 worldXZ, float time, float waveStrength) {
+    float2 guessXZ = worldXZ;
+    float totalHeight = 0.0f;
+    float3 dummyTangent = float3(0,0,0);
+    float3 dummyBinormal = float3(0,0,0);
+    
+    // Wave 1: Primary Swell
+    EvaluateWaveLayer(worldXZ, float2(0.8f, 0.6f), 0.5f * waveStrength, 0.4f, 12.0f, 1.5f, time, guessXZ, dummyTangent, dummyBinormal, totalHeight);
+    // Wave 2: Secondary Choppy Cross-Swell
+    EvaluateWaveLayer(worldXZ, float2(-0.5f, 0.8f), 0.2f * waveStrength, 0.3f, 5.0f, 2.2f, time, guessXZ, dummyTangent, dummyBinormal, totalHeight);
+    
+    return totalHeight;
+}
+
+
+
+float3 calculateGerstnerNormal(float2 worldXZ, float time, float waveSmoothness, float waveStrength) {
+    float2 guessXZ = worldXZ;
+    float dummyHeight = 0.0f;
+    
+    // MUST initialize as clean base basis vectors before accumulating layer offsets
+    float3 tangent  = float3(1.0f, 0.0f, 0.0f);
+    float3 binormal = float3(0.0f, 0.0f, 1.0f);
+    
+    // Scale your wavelengths MUCH larger. 
+    // Small values like 5.0 and 12.0 create tiny 5-meter ripples that look like static noise in a block world.
+    // Let's use clean scales that merge perfectly with a 1024 grid factor.
+    
+    // Wave 1: Massive rolling ocean swell (Wavelength 64 blocks)
+    EvaluateWaveLayer(worldXZ, float2(0.8f, 0.6f), WAVE_HEIGHT, WAVE_STEEPNESS, 64.0f, 1.2f, time, guessXZ, tangent, binormal, dummyHeight);
+    
+    // Wave 2: Chop wave traveling cross-direction (Wavelength 32 blocks)
+    EvaluateWaveLayer(worldXZ, float2(-0.6f, 0.8f),WAVE_HEIGHT, WAVE_STEEPNESS * 0., 32.0f, 1.8f, time, guessXZ, tangent, binormal, dummyHeight);
+    
+    // Generate clean geometric normal
+    float3 rawNormal = normalize(cross(binormal, tangent));
+    
+    // Blend with absolute world up vector via smooth mix
+    return normalize(lerp(rawNormal, float3(0.0f, 1.0f, 0.0f), waveSmoothness));
+}
+
 #endif //WATER_HLSL

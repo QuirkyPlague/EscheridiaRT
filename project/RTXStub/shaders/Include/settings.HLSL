@@ -5,6 +5,23 @@
 // White furnace test
 #define WHITE_FURNACE 0
 
+// This will enable an HDR color space to use with your HDR monitor
+// This WILL require an external plugin like Reshade or Special K
+#define ENABLE_HDR 0
+
+//Tune to your monitor
+#define HDR_PEAK_LUMINANCE 750
+
+// What color space your output will use
+// 0 SRGB 
+// 1 Rec 709
+// 2 Rec 2020
+// 3 Display P3
+// IT IS HIGHLY RECOMMENDED YOU USE Rec 2020 OR Display P3 IF HDR IS ENABLED
+#define COLOR_SPACE 3
+
+// This disables objects that are not raytraced (sign text, particles stars). This will disable the menu panorama 
+// Use this if you want those to not appear in front of DOF for renders
 #define DISABLE_RASTER_OBJECTS 0
 
 // Lighting Parameters
@@ -13,17 +30,28 @@
 // The sun's zenith angle in radians
 #define SUN_ZENITH                (PI / 4.1)                   // Vanilla: 0.0, BetterRTX: PI / 4
 
+#define ENABLE_DOF 0
 // Approximate distances for the type of shot you want
 // 0.0-5.0 = close range shots
 // 6.0 - 15.0 midrange shot
 // 16.0+ = long range shot
-#define DOF_FOCAL_DISTANCE 2.5f
+#define DOF_FOCAL_DISTANCE 12.5f
 
-#define CHROMATIC_ABERRATION_INTENSITY 0.00373;
+
+#define CHROMATIC_ABERRATION_INTENSITY 0.02
+
 // Blur does not scale with focal distance
 // Longer focal distance needs more blur if you want a very focused shot
-#define DOF_BLUR_STRENGTH 21.725f 
+#define DOF_BLUR_STRENGTH 150.725f 
 #define DOF_SAMPLES 2
+
+// 0 = circular 
+// 1 = polygonal
+// with polygonal the shape is dependent on the blade count
+#define DOF_APERTURE_SHAPE 1
+#define DOF_BLADES 3
+
+#define RADIAL_BLUR_STRENGTH 3600.0
 
 #define RAY_COUNT 24
 
@@ -32,7 +60,7 @@
 // If radius is made larger sun is more intense
 // Recommended to reduce sunlight intensity if increased
 #define SUN_RADIUS   0.00465f * 4
-#define SUN_INTENSITY 0.186
+#define SUN_INTENSITY 0.216
 #define CLOUD_SHADOW_OPACITY 0.616
 #define ENABLE_SUNLIGHT 1
 
@@ -41,7 +69,7 @@
 
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
-#define EMISSION_STENGTH  100
+#define EMISSION_STENGTH  125
 
 
 #define VL_FOG_STEPS 4
@@ -97,13 +125,15 @@
 
 #define WAVE_SMOOTHING                                      (0.0313)
 #define WAVE_INTENSITY                                      (0.1252)
-#define WAVE_FREQUENCY                                      (1.14)
+#define WAVE_FREQUENCY                                      (1.84)
 #define WAVE_OCTAVES                                        (21)
 #define WAVE_SPEED                                          (3.0)
 #define WAVE_RANDOMNESS                                     (0.1)
-#define WAVE_OCTAVE_FREQUENCY                               (1.18)
+#define WAVE_OCTAVE_FREQUENCY                               (1.21)
 #define WAVE_OCTAVE_SPEED                                   (1.11)
 #define WAVE_OCTAVE_MIX_WEIGHT                              (0.276)
-#define WAVE_PULL                                           (0.34235)
+#define WAVE_PULL                                           (0.54235)
 
+#define WAVE_STEEPNESS 0.25
+#define WAVE_HEIGHT  0.5
 #endif // SETTINGS_HLSL

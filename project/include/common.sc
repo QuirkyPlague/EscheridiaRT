@@ -1,12 +1,15 @@
+#include "../../RTXStub/shaders/Include/Settings.hlsl"
 float luminance(vec3 clr) { return dot(clr, vec3(0.2126, 0.7152, 0.0722)); }
+
+
 
 // https://en.wikipedia.org/wiki/SRGB#From_CIE_XYZ_to_sRGB
 vec3 linearToSRGB(vec3 c) {
     // Full linear to sRGB function
-    return max(mix(12.92 * c, 1.055 * pow(c, 1.0 / 2.4) - 0.055, greaterThan(c, 0.0031308)), 0);
+    //return max(mix(12.92 * c, 1.055 * pow(c, 1.0 / 2.4) - 0.055, greaterThan(c, 0.0031308)), 0);
     
     // Approximation
-    //return max(pow(c, 1.0 / 2.2), 0);
+    return max(pow(c, 1.0 / 2.2), 0);
 }
 
 // Bloom implementation is based on: https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom
@@ -77,6 +80,26 @@ vec3 ACESFittedTonemap(vec3 rgb) {
     return rgb;
 }
 
+vec3 LinearToPQ(vec3 L_in)
+{
+	const float PQ_MAX_LUMINANCE = 10000.0;
+	const vec3 L = clamp((L_in * HDR_PEAK_LUMINANCE) / PQ_MAX_LUMINANCE, 0.0, 1.0);
+
+    // PQ constants
+    const float m1 = 2610.0 / 16384.0;    // ≈0.1593
+    const float m2 = 2523.0 /   32.0;    // ≈78.8438
+    const float c1 = 3424.0 / 4096.0;    // ≈0.83594
+    const float c2 = (2413.0 * 32)/4096;  // ≈18.8516
+    const float c3 = (2392.0 * 32)/4096;  // ≈18.6875
+
+    vec3 Lm1 = pow(L, vec3(m1,m1,m1));
+    vec3 num = c1 + c2 * Lm1;
+    vec3 den = 1.0f + c3 * Lm1;
+    return pow(num/den, vec3(m2,m2,m2));
+}
+
+
+
 // 0: Default, 1: Golden, 2: Punchy
 #define AGX_LOOK 2
 
@@ -114,6 +137,10 @@ vec3 agx(vec3 val) {
 }
 
 vec3 agxEotf(vec3 val) {
+        const mat3 matrix_rec709_to_xyz = transpose(mat3(0.412390917540, 0.357584357262, 0.180480793118, 0.212639078498, 0.715168714523, 0.072192311287, 0.019330825657, 0.119194783270, 0.950532138348));
+ const mat3 matrix_xyz_to_p3d65 = transpose(mat3(2.49349691194, -0.931383617919, -0.402710784451, -0.829488969562, 1.76266406032, 0.023624685842, 0.035845830244, -0.076172389268, 0.956884524008));
+const mat3 matrix_xyz_to_rec2020 = transpose(mat3(1.71665118797, -0.355670783776, -0.253366281374, -0.666684351832, 1.61648123664, 0.015768545814, 0.017639857445, -0.042770613258, 0.942103121235));
+   
     const mat3 agxMatInv = mat3(
          1.19687900512017,   -0.0980208811401368, -0.0990297440797205,
         -0.0528968517574562,  1.15190312990417,   -0.0989611768448433,
@@ -122,15 +149,30 @@ vec3 agxEotf(vec3 val) {
 
     val = mul(agxMatInv, val);
 
-    // Remove this conversion if writing to an sRGB framebuffer.
-    return pow(max(val, vec3(0.0, 0.0, 0.0)), vec3(2.2, 2.2, 2.2));
+    // Remove this conversion if NOT writing to an sRGB framebuffer.
+    #if ENABLE_HDR
+     val = pow(val, vec3(2.2,2.2,2.2));
+     val = mul(mul(val, matrix_rec709_to_xyz), matrix_xyz_to_p3d65);
+    #else
+    val = pow(val, vec3(2.2,2.2,2.2));
+    #endif
+    //val = mul(mul(val, matrix_rec709_to_xyz), matrix_xyz_to_rec2020);
+
+    return val;
 }
+
+vec3 reinhard_jodie(vec3 v) {
+  float l = luminance(v);
+  vec3 tv = v / (1.0f + v);
+  return (mix(v / (1.0f + l), tv, tv));
+}
+
 
 vec3 agxLook(vec3 val) {
     vec3 offset = vec3(0.0, 0.0, 0.0);
     vec3 slope  = vec3(1.0, 1.0, 1.0);
     vec3 power  = vec3(1.0, 1.0, 1.0);
-    float sat   = 1.15;
+    float sat   = 1.35;
 
 #if AGX_LOOK == 1
     // Golden
@@ -139,7 +181,7 @@ vec3 agxLook(vec3 val) {
     sat = 0.8;
 #elif AGX_LOOK == 2
     // Punchy
-    power = vec3(1.25, 1.25, 1.25);
+    power = vec3(1.3, 1.3, 1.3);
 #endif
 
     val = pow(max(val * slope + offset, vec3(0.0, 0.0, 0.0)), power);
@@ -147,7 +189,7 @@ vec3 agxLook(vec3 val) {
     const vec3 lumaWeights = vec3(0.2126, 0.7152, 0.0722);
     float luma = dot(val, lumaWeights);
 
-    return vec3(luma, luma, luma) + sat * (val - vec3(luma, luma, luma));
+    return vec3(luma.xxx) + sat * (val - vec3(luma.xxx));
 }
 
 vec3 tonemapAgX(vec3 color) {
@@ -155,3 +197,21 @@ vec3 tonemapAgX(vec3 color) {
     color = agxLook(color);
     return agxEotf(color);
 }
+
+vec3 chromaticAberration(vec2 uv, sampler2D bufferSampler) {
+    vec2 center = vec2(0.5, 0.5);
+    vec2 dist = uv - center;
+    vec2 clampedUv = clamp(uv, vec2(0.0, 0.0), vec2(1.0, 1.0));
+    if(any(notEqual(clampedUv, uv))) return texture2D(bufferSampler, uv).rgb; // Avoid sampling outside the texture
+    // Amount increases as we move further from the center
+    float amount = CHROMATIC_ABERRATION_INTENSITY * length(dist);
+    amount = pow(amount, 1.0);
+    float r = texture2D(bufferSampler, uv + dist * amount).r;
+    float g = texture2D(bufferSampler, uv).g;
+    float b = texture2D(bufferSampler, uv - dist * amount).b;
+    vec3 chroma = vec3(r, g, b);
+
+    return chroma;
+}
+
+

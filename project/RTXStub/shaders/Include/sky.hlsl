@@ -292,7 +292,7 @@ float3 skyScattering1(float3 pos) {
     float3 moonDir = getTrueDirectionToMoon();
 
     float VoL = dot(dir, sunDir);
-    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 15;
+    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 21;
 
 
     float upPos = saturate(dir.y);

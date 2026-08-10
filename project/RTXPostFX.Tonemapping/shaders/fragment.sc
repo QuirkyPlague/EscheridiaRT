@@ -21,6 +21,7 @@ $input v_texcoord0
 #include "../../RTXStub/shaders/Include/Settings.hlsl"
 // Bloom strength
 
+
 #define BLOOM_MULTIPLIER 10.0
 
 
@@ -69,21 +70,39 @@ SAMPLER2D_AUTOREG(s_gRasterizedInput);
 SAMPLER2D_AUTOREG(s_gToneCurve); // LUT from histogram based tonemapper
 
 void Frag(FragmentInput fragInput, inout FragmentOutput fragOutput) {
-     vec2 ndcCoord = (fragInput.texcoord0 - vec2(0.0,0.0)) * vec2(2.0,2.0);
-	vec2 offset = ndcCoord * ndcCoord * sign(ndcCoord) * CHROMATIC_ABERRATION_INTENSITY;
-	float redAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset, 0.0, 1.0)).r;
-	float greenAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset * 0.785, 0.0, 1.0)).g;
-	float blueAberrated = texture2D(s_RasterColor, clamp(fragInput.texcoord0 - offset * 0.677, 0.0, 1.0)).b;
-	vec3 hdr = vec3(redAberrated, greenAberrated, blueAberrated);
+     const mat3 matrix_rec709_to_xyz = transpose(mat3(0.412390917540, 0.357584357262, 0.180480793118, 0.212639078498, 0.715168714523, 0.072192311287, 0.019330825657, 0.119194783270, 0.950532138348));
+ const mat3 matrix_xyz_to_p3d65 = transpose(mat3(2.49349691194, -0.931383617919, -0.402710784451, -0.829488969562, 1.76266406032, 0.023624685842, 0.035845830244, -0.076172389268, 0.956884524008));
+const mat3 matrix_xyz_to_rec2020 = transpose(mat3(1.71665118797, -0.355670783776, -0.253366281374, -0.666684351832, 1.61648123664, 0.015768545814, 0.017639857445, -0.042770613258, 0.942103121235));
+	vec3 hdr = texture2D(s_RasterColor, fragInput.texcoord0).rgb;
+    //hdr = chromaticAberration(fragInput.texcoord0, s_RasterColor);
     vec4 raster = texture2D(s_gRasterizedInput, fragInput.texcoord0);
     //raster.rgb = linearToSRGB(ACESFittedTonemap(raster.rgb));
     vec3 bloom = upscaleBloomFiltered(fragInput.texcoord0, s_gBloomBuffer, ScreenSize.xy);
+    #if ENABLE_HDR
+    //hdr /= 11.2;
+    #endif
     hdr += BLOOM_MULTIPLIER * gBloomMultiplier.x * bloom;
     #if DISABLE_RASTER_OBJECTS == 1
-    hdr = linearToSRGB(tonemapAgX(hdr))
+    #if ENABLE_HDR
+       hdr =  mul(mul(hdr, matrix_rec709_to_xyz), matrix_xyz_to_rec2020);
+    hdr = tonemapAgX(hdr);
+  
+    hdr = LinearToPQ(hdr);
     #else
+    hdr = linearToSRGB(tonemapAgX(hdr));
+
+    #endif // ENABLE HDR
+    #else
+    #if ENABLE_HDR
+   hdr =  mul(mul(hdr, matrix_rec709_to_xyz), matrix_xyz_to_rec2020);
+    hdr = mix((tonemapAgX(hdr)), raster.rgb, raster.a);
+   
+    hdr = LinearToPQ(hdr);
+    #else
+    
     hdr = mix(linearToSRGB(tonemapAgX(hdr)), raster.rgb, raster.a);
-    #endif
+    #endif // ENABLE_HDR
+    #endif // DISABLE_RASTER_OBJECTS
     vec3 outputColorSRGB = hdr;
     fragOutput.Color0.rgb = outputColorSRGB;
 }

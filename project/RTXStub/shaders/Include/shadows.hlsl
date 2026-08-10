@@ -91,6 +91,64 @@ void TraceShadowRay(in RayDesc ray, out shadowPayload payload) {
     payload.transmission = q.CommittedStatus() == COMMITTED_NOTHING ? transmission : 0;
 }
 
+struct TransmissionPayload{
+    float3 transmission;
+};
+
+void castTransmissionRay(in RayDesc ray, out TransmissionPayload payload) {
+    float3 emissive = 0..xxx;
+    RayQuery<RAY_FLAG_NONE> query;
+
+   const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY | INSTANCE_MASK_ALPHA_BLEND_SECONDARY | INSTANCE_MASK_WATER;
+      
+    query.TraceRayInline(SceneBVH, RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, INSTANCE_MASK_WATER, ray);
+    float3 transmission = 1.0;
+    while(query.Proceed()) {
+        HitInfo hitInfo = GetCandidateHitInfo(query);
+        
+    
+        ObjectInstance object = objectInstances[hitInfo.objectInstanceIndex];
+        bool isCloud = object.flags & kObjectInstanceFlagClouds;
+
+        if (isCloud) {
+            // Simple cloud shadow approximation
+            transmission *= saturate(1.0 - CLOUD_SHADOW_OPACITY);
+            continue;
+        };
+
+         if (object.flags & (kObjectInstanceFlagSun | kObjectInstanceFlagMoon)) {
+            continue;
+        }
+
+        if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST) {
+            if (AlphaTestHitLogic(hitInfo)) {
+                query.CommitNonOpaqueTriangleHit();
+            }
+        }
+        else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
+            GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
+            SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
+
+            float alphablend = 1 - surfaceInfo.alpha;
+            float3 waterExtinction = calcTransmittance(hitInfo.rayT, getMediaExtinction(MEDIA_TYPE_WATER).rgb);
+            transmission *= waterExtinction;
+
+            if (!any(transmission))
+            {
+                 query.CommitNonOpaqueTriangleHit();
+                
+            }
+           
+        }
+        else
+        {
+             query.CommitNonOpaqueTriangleHit();
+        }
+     
+    }
+      
+     payload.transmission =  transmission;
+}
 
 
 

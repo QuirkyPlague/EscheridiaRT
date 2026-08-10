@@ -401,6 +401,25 @@ float3 offset_ray(const float3 p, const float3 n)
 
 }
 
+float3 getBentNormal(float3 geometryNormal, float3 shadingNormal, float3 viewToGeometryDirection) {
+    // If you find an issue with bent normals, revert to normal normal by #if 0
+#if 1
+    // Specular reflection in shading normal
+    float3 R = reflect(viewToGeometryDirection, shadingNormal);
+    float a = dot(geometryNormal, R);
+    if (a < 0) // Perturb normal
+    {
+        float b = max(0.001, dot(shadingNormal, geometryNormal));
+        return normalize(-viewToGeometryDirection + normalize(R - shadingNormal * a / b));
+    }
+    else {
+        return shadingNormal;
+    }
+#else
+    return shadingNormal;
+#endif
+}
+
 uint readAccumulationFrameIdx() { return outputBufferToneMappingHistogram[uint2(0,0)]; }
 void storeAccumulationFrameIdx(uint frameIdx) { outputBufferToneMappingHistogram[uint2(0,0)] = frameIdx; }
 
