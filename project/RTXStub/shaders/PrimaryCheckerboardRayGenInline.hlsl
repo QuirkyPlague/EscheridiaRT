@@ -44,8 +44,8 @@ void PrimaryCheckerboardRayGenInline(
     float hitDist; float3 objMotion; float3 color; float2 motionVector; float firstHitDist;
     
    
-     RayDesc rayDesc;
-     PathRNG rngState;
+        RayDesc rayDesc;
+        PathRNG rngState;
         rayDesc.Direction = rayDirFromNDC(getNDCjittered(dispatchThreadID.xy));
         rayDesc.Origin = g_view.viewOriginSteveSpace;
 

@@ -292,7 +292,7 @@ float3 skyScattering1(float3 pos) {
     float3 moonDir = getTrueDirectionToMoon();
 
     float VoL = dot(dir, sunDir);
-    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 21;
+    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 13;
 
 
     float upPos = saturate(dir.y);
@@ -301,9 +301,9 @@ float3 skyScattering1(float3 pos) {
     float midPos = upPos + negatedDownPos;
     float negatedMidPos = 1.0 - midPos;
     //rain
-    const float3 rainZenCol = float3(0.2902, 0.3608, 0.4784) * 0.25;
-    const float3 rainHorCol = float3(0.7059, 0.7569, 0.7961) * 0.25;
-    const float3 rainGrndCol = float3(0.1569, 0.1922, 0.2314) * 0.25;
+    const float3 rainZenCol = float3(0.4784, 0.4784, 0.4784) * 4;
+    const float3 rainHorCol = float3(0.7059, 0.7569, 0.7961) * 4;
+    const float3 rainGrndCol = float3(0.1569, 0.1922, 0.2314) *4;
 
     const int keys = 10;
 
@@ -388,7 +388,7 @@ float3 skyScattering1(float3 pos) {
             mieScale = lerp(mieColor[i - 1].a, mieColor[i].a, w);
             dawnDuskMieFactor = smoothstep(-0.035, 0.035, dir.y);
             dawnDuskTimeFactor = smoothstep(0.00, 0.05, w) * smoothstep(0.1, 0.35, w);
-
+            rainIntensityShift = lerp(weatherIntensity[i - 1], weatherIntensity[i], w);
             break;
         }
     }
@@ -396,6 +396,10 @@ float3 skyScattering1(float3 pos) {
     float zenithBlend = saturate(pow(upPos, ZENITH_BLEND));
     float horizonBlend = saturate(pow(negatedMidPos, HORIZON_BLEND));
     float groundBlend = saturate(pow(negatedDownPos, GROUND_BLEND));
+
+    zenithCol = lerp(zenithCol, rainZenCol * rainIntensityShift, g_view.rainLevel);
+	horizonCol = lerp(horizonCol, rainHorCol * rainIntensityShift,  g_view.rainLevel);
+	groundCol = lerp(groundCol, rainGrndCol * rainIntensityShift,  g_view.rainLevel);
 
     zenithCol *= rayleigh * zenithBlend;
     horizonCol *= rayleigh * horizonBlend;
@@ -437,9 +441,6 @@ float3 skyScattering1(float3 pos) {
     float3 sun = getSun(dir);
 
     float3 color = sky + finalMie;
-    float skyLuminance = dot(color, 1.0);
-    color = pow(color, 1.5);
-    color *= skyLuminance / dot(color, 1.0);
     return color + sun;
     #endif
 }

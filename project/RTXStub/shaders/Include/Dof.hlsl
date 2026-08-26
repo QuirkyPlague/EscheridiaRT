@@ -7,6 +7,7 @@
 	
 	
 #define ANAMORPHIC_STRETCH 8.0;
+// From Coding Adventures: Ray Tracing https://youtu.be/Qz0KTGYJtUk?si=w0Hq8sTNKwmuw0zv 
 float2 randomPointInCircle(inout PathRNG rngState)
 {
 	float angle = NextFloat(rngState) * 2 * PI; // 2 * PI
@@ -14,61 +15,23 @@ float2 randomPointInCircle(inout PathRNG rngState)
 	return pointOnCircle * sqrt(NextFloat(rngState));
 }
 
-// Concentric Mapping (http://psgraphics.blogspot.com/2011/01/improved-code-for-concentric-map.html)
-float2 mapSquareToDisk(float2 u) {
-	float phi, r;
-	float a = 2 * u.x - 1;
-	float b = 2 * u.y - 1;
-	if (a*a > b*b) { // use squares instead of absolute values
-		r = a;
-		phi = (PI / 4)*(b / a);
-	}
-	else {
-		r = b;
-		phi = (PI / 2) - (PI / 4)*(a / b);
-	}
-	return float2(r*cos(phi), r*sin(phi));
+//from https://pbr-book.org/3ed-2018/Camera_Models/Projective_Camera_Models
+float2 randomPointInRegularPolygon(inout PathRNG rng,uint bladeCount,float rotation)
+{
+    uint sector = min(uint(NextFloat(rng) * bladeCount), bladeCount - 1);
+
+    float a0 = rotation + (2.0 * PI * sector) / bladeCount;
+    float a1 = rotation + (2.0 * PI * (sector + 1)) / bladeCount;
+
+    float2 v0 = float2(cos(a0), sin(a0));
+    float2 v1 = float2(cos(a1), sin(a1));
+
+    // Uniform point in triangle: center, v0, v1.
+    float r = sqrt(NextFloat(rng));
+    float t = NextFloat(rng);
+    return r * lerp(v0, v1, t);
 }
 
-
-float2 lineIntersection(float2 a1, float2 a2, float2 b1, float2 b2) {
-	
-	float r = ((a1.y - b1.y) * (b2.x - b1.x) - (a1.x - b1.x) * (b2.y - b1.y))
-	       	/ ((a2.x - a1.x) * (b2.y - b1.y) - (a2.y - a1.y) * (b2.x - b1.x));
-
-	return a1 + r * (a2 - a1);
-}
-float2 samplePolygon(int polygonSides, inout PathRNG randSeed) {
-
-	// Sample circle first
-	float2 u = float2(NextFloat(randSeed), NextFloat(randSeed));
-	float2 result = mapSquareToDisk(u);
-
-	// Check if point is in the polygon
-	float polygonInternalAngle = (PI * 2) / polygonSides;
-
-	float testedPointDistance = length(result);
-	float testedPointAngle = acos(dot(float2(0, 1), normalize(result)));
-	testedPointAngle = fmod(testedPointAngle, polygonInternalAngle);
-
-	float2 polygonPoint = float2(-sin(polygonInternalAngle), cos(polygonInternalAngle));
-	float2 testedPoint = float2(-sin(testedPointAngle), cos(testedPointAngle)) * testedPointDistance;
-
-	float2 projectedTestedPoint = lineIntersection(testedPoint, float2(0, 0), polygonPoint, float2(0, 1));
-	float projectedTestedPointDistance = length(projectedTestedPoint);
-
-
-	if (projectedTestedPointDistance < testedPointDistance) {
-		// Remap point back into the polygon if it's outside
-		float m = 1 - projectedTestedPointDistance;
-		float t = testedPointDistance - projectedTestedPointDistance;
-		float rescaledDistance = (t / m) * projectedTestedPointDistance;
-		return normalize(result) * rescaledDistance;
-	} 
-
-
-	return result;
-}
 float2 rotateVector(float2 v, float angle)
 {
     float c = cos(angle);
@@ -95,7 +58,7 @@ void computeDOFRay(uint2 pixelCoord, float3 rayOrigin, float3 rayDir, in PathRNG
 	#if DOF_APERTURE_SHAPE == 0
 	apertureSample = randomPointInCircle(rngState);
 	#else
-	apertureSample = samplePolygon(DOF_BLADES,rngState);
+	apertureSample = apertureSample = randomPointInRegularPolygon(rngState,DOF_BLADES, DOF_APERTURE_ROTATION);
 	#endif
 
     apertureSample *= DOF_BLUR_STRENGTH / g_view.renderResolution.x;

@@ -33,7 +33,8 @@ void FinalCombine(
         // This doesn't let the NaNs and INFs persist between accumulations.
         historyColor = currentSample;
     }
-
-    outputBufferReferencePathTracer[pixelPos] = float4(historyColor, 1);;
-    outputBufferFinal[pixelPos] = float4(historyColor, 1);
+        float finalAlpha = 0;
+      if (pixelPos.x == 0) finalAlpha = g_view.time;
+    outputBufferReferencePathTracer[pixelPos] = float4(historyColor, 1);
+    outputBufferFinal[pixelPos] = float4(historyColor, finalAlpha);
 }

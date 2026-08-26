@@ -236,6 +236,7 @@ bool isMoonPrimaryLight() {
     return min(angleDiff, (2*PI)-angleDiff) > 0.001;
 }
 
+// Need to replace eventually. Initially used to keep coherence with BetterRTX for people familiar with it, but need to ask permission
 float3 rotateBySunAngle(float3 dir, bool inverse = false)
 {
 	float a = inverse ? -SUN_ZENITH : SUN_ZENITH;
@@ -381,7 +382,15 @@ float calcDensityModifier(in float3 position)
 	}
 	return densityModifier;
 }
+bool isInNether()
+{
+	return any(g_view.constantAmbient);
+}
 
+static  bool inNether = isInNether();
+
+// From Raytracing Gems 
+// Clean ray offset that avoids self intersection
 float3 offset_ray(const float3 p, const float3 n)
 {
     static const float origin = 1.0f / 32.0f;
@@ -401,24 +410,6 @@ float3 offset_ray(const float3 p, const float3 n)
 
 }
 
-float3 getBentNormal(float3 geometryNormal, float3 shadingNormal, float3 viewToGeometryDirection) {
-    // If you find an issue with bent normals, revert to normal normal by #if 0
-#if 1
-    // Specular reflection in shading normal
-    float3 R = reflect(viewToGeometryDirection, shadingNormal);
-    float a = dot(geometryNormal, R);
-    if (a < 0) // Perturb normal
-    {
-        float b = max(0.001, dot(shadingNormal, geometryNormal));
-        return normalize(-viewToGeometryDirection + normalize(R - shadingNormal * a / b));
-    }
-    else {
-        return shadingNormal;
-    }
-#else
-    return shadingNormal;
-#endif
-}
 
 uint readAccumulationFrameIdx() { return outputBufferToneMappingHistogram[uint2(0,0)]; }
 void storeAccumulationFrameIdx(uint frameIdx) { outputBufferToneMappingHistogram[uint2(0,0)] = frameIdx; }

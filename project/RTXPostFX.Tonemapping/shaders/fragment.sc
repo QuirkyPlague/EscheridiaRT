@@ -22,7 +22,7 @@ $input v_texcoord0
 // Bloom strength
 
 
-#define BLOOM_MULTIPLIER 10.0
+#define BLOOM_MULTIPLIER 4.5
 
 
 uniform vec4 gToneMappingDebugMode;
@@ -74,10 +74,13 @@ void Frag(FragmentInput fragInput, inout FragmentOutput fragOutput) {
  const mat3 matrix_xyz_to_p3d65 = transpose(mat3(2.49349691194, -0.931383617919, -0.402710784451, -0.829488969562, 1.76266406032, 0.023624685842, 0.035845830244, -0.076172389268, 0.956884524008));
 const mat3 matrix_xyz_to_rec2020 = transpose(mat3(1.71665118797, -0.355670783776, -0.253366281374, -0.666684351832, 1.61648123664, 0.015768545814, 0.017639857445, -0.042770613258, 0.942103121235));
 	vec3 hdr = texture2D(s_RasterColor, fragInput.texcoord0).rgb;
-    //hdr = chromaticAberration(fragInput.texcoord0, s_RasterColor);
+    float time = texture2D(s_RasterColor, ivec2(0.0,0.0)).a;
+
+   // hdr = vhsFilter(fragInput.texcoord0, s_RasterColor, time,u_viewRect.zw );
     vec4 raster = texture2D(s_gRasterizedInput, fragInput.texcoord0);
     //raster.rgb = linearToSRGB(ACESFittedTonemap(raster.rgb));
     vec3 bloom = upscaleBloomFiltered(fragInput.texcoord0, s_gBloomBuffer, ScreenSize.xy);
+    hdr *= 1.15;
     #if ENABLE_HDR
     //hdr /= 11.2;
     #endif

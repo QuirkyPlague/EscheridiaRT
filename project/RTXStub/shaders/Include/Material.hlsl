@@ -557,7 +557,7 @@ surfaceInfo.normal =
                 bitangent,
                 worldGeomNormal)));
                 
-                surfaceInfo.normal = getBentNormal(geometryInfo.geometryNormal, surfaceInfo.normal, 0.0);
+                
         }
     }
 

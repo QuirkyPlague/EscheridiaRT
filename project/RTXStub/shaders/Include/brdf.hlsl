@@ -22,6 +22,7 @@
         return dot(linearColor, float3(0.3, 0.59, 0.11));
     }
 
+    // UE4: anything less than 2% is physically impossible and is instead considered to be shadowing
     float BRDF_F_Shadowing(float3 Rf0)
     {
         return saturate(50.0 * BRDF_Luminance(Rf0));
@@ -33,18 +34,7 @@
         return F0 + (f - F0) * BRDF_Pow5(cosTheta);
     }
 
-    float3 BRDF_F_Fresnel(float cosa, float3 Rf0)
-{
-    float3 nu = sqrt(Rf0);
-    nu = (1.0 + nu) / (1.0 - nu + BRDF_FIX);
 
-    float k = cosa * cosa - 1.0;
-    float3 g = sqrt(nu * nu + k);
-    float3 a = (g - cosa) / (g + cosa);
-    float3 c = (g * cosa + k) / (g * cosa - k);
-
-    return 0.5 * a * a * (c * c + 1.0);
-}
 
     float DistributionGGX(float3 N, float3 H, float roughness) {
         float r = max(roughness, 0.001);
@@ -123,57 +113,6 @@
         return (lightScatter * viewScatter * energyFactor / PI);
     }
 
-    float3x3 tbnMatrix(float3 N) {
-        float3 up = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
-        float3 T = normalize(cross(up, N));
-        float3 B = cross(N, T);
-        return float3x3(T, B, N);
-    }
-
-
-
-
-
-    float BRDF_D_GGX(float roughness, float n_dot_h)
-{
-    float m = roughness * roughness;
-    float m2 = m * m;
-    float d = (n_dot_h * m2 - n_dot_h) * n_dot_h + 1.0;
-
-    return m2 / (d * d + BRDF_FIX);
-}
-
-// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
-float BRDF_G_Schlick(float roughness, float n_dot_l, float n_dot_v, float v_dot_h, float n_dot_h)
-{
-    float m = roughness * roughness;
-
-    // original form
-    //float k = m * sqrt(2.0 / BRDF_PI);
-
-    // UE4: tuned to match GGX [Karis]
-    float k = m * 0.5;
-
-    float a = n_dot_l * (1.0 - k) + k;
-    float b = n_dot_v * (1.0 - k) + k;
-
-    return 0.25 / (a * b + BRDF_FIX);
-}
-
-// Smith term for GGX modified by Disney to be less "hot" for small roughness values
-// [Smith 1967, "Geometrical shadowing of a random rough surface"]
-// [Burley 2012, "Physically-Based Shading at Disney"]
-float BRDF_G_Smith(float roughness, float n_dot_l, float n_dot_v, float v_dot_h, float n_dot_h)
-{
-    float m = roughness * roughness;
-    float m2 = m * m;
-    float a = n_dot_v + sqrt(n_dot_v * (n_dot_v - n_dot_v * m2) + m2);
-    float b = n_dot_l + sqrt(n_dot_l * (n_dot_l - n_dot_l * m2) + m2);
-
-    return 1.0 / (a * b);
-}
-
-
     float D_GGX(float NdotH, float roughness) {
         float r = max(roughness, 0.001);
         float a = r * r;
@@ -201,6 +140,18 @@ float BRDF_G_Smith(float roughness, float n_dot_l, float n_dot_v, float v_dot_h,
         max(NdotV + sqrt(a2 + (1.0 - a2) * NdotV2), 0.00001);
     }
 
+    
+    
+
+    float G_Smith(float NdotV, float NdotL, float roughness) {
+        float ggx2 = G1_SmithGGX(NdotV, roughness);
+        float ggx1 = G1_SmithGGX(NdotL, roughness);
+        return ggx1 * ggx2;
+    }
+
+
+    // General thesis from https://jo.dreggn.org/home/2017_normalmap.pdf 
+    // Unused and likely incomplete
     float G1_TangentFacet(float3 wi,float3 wm,float3 wg,float3 wp,float3 wt)
     {
         float H = step(0.0, dot(wi, wm));
@@ -213,14 +164,7 @@ float BRDF_G_Smith(float roughness, float n_dot_l, float n_dot_v, float v_dot_h,
         return H * visibility;
     }
 
-    
-
-    float G_Smith(float NdotV, float NdotL, float roughness) {
-        float ggx2 = G1_SmithGGX(NdotV, roughness);
-        float ggx1 = G1_SmithGGX(NdotL, roughness);
-        return ggx1 * ggx2;
-    }
-
+    // Also from https://jo.dreggn.org/home/2017_normalmap.pdf 
     float3 EvaluateFacetBRDF(float3 wi,float3 wo,float3 wm,float3 F0,float roughness)
     {
         float NoL = max(dot(wm, wi), 0.0001);
@@ -251,48 +195,6 @@ float BRDF_G_Smith(float roughness, float n_dot_l, float n_dot_v, float v_dot_h,
     }
 
 
-    float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {
-        float a = roughness * roughness;
-
-        // Analytical directional albedo E(x) approximations
-        float E_v = saturate(1.0 - a * (1.0 - NdotV));
-        float E_l = saturate(1.0 - a * (1.0 - NdotL));
-        float E_avg = saturate(1.0 - a * 0.5);
-
-        // Directional average of Fresnel
-        float3 F_avg = F0 + (1.0 - F0) / 21.0;
-
-        // Evaluate multiple scattering term
-        float3 Fms = (F_avg * (1.0 - E_v) * (1.0 - E_l)) / (PI * (1.0 - F_avg * (1.0 - E_avg)) + 1e-5);
-
-        return Fms;
-    }
-
-
-    
-
-    
-    
-
-
-    float3 CorrectShadingNormal(
-    float3 wo,
-    float3 wi,
-    float3 Ng,
-    float3 Ns)
-    {
-        float NoV  = saturate(dot(Ng, wo));
-        float NoL  = saturate(dot(Ng, wi));
-
-        float NsV  = saturate(dot(Ns, wo));
-        float NsL  = saturate(dot(Ns, wi));
-
-        float scaleV = NoV / max(NsV, 1e-4);
-        float scaleL = NoL / max(NsL, 1e-4);
-
-        return Ns * min(scaleV, scaleL);
-    }
-
     float MISWeight(float pdfA, float pdfB)
     {
         pdfA *= pdfA;
@@ -313,59 +215,186 @@ float BRDF_G_Smith(float roughness, float n_dot_l, float n_dot_v, float v_dot_h,
     }
 
 
-    float3 SampleGGXMicrofacetNormal(float3 V, float3 N, float roughness, float2 u) {
-        float alpha = max(roughness * roughness, 0.001);
 
-        float3 T, B;
-        BuildOrthonormalBasis(N, T, B);
+    // the following code is taken from https://arxiv.org/pdf/2410.18026 
+    // EON: A practical energy-preserving rough diffuse BRDF
+    static const float rcppi = 1.0f / PI;
+    static const float constant1_FON = 0.5f - 2.0f / (3.0f * PI);
+    static const float constant2_FON = 2.0f / 3.0f - 28.0f / (15.0f * PI);
 
-        float3 Vlocal = float3(dot(V, T), dot(V, B), dot(V, N));
-        float3 Hlocal = SampleVNDFGGX(Vlocal, alpha, u);
-        float3 H = safeNormalize(Hlocal.x * T + Hlocal.y * B + Hlocal.z * N, N);
-        return dot(H, V) >= 0.0 ? H : -H;
-    }
-
-    struct BRDFSample
+    float E_FON_exact(float mu, float r)
     {
-        float3 direction;
-        float3 weight;
-    };
-
-    BRDFSample SampleFacetGGX( float3 wi, float3 facetNormal, float roughness, float3 F0, float2 Xi) 
-    { 
-        BRDFSample sample; 
-        float3 facetT; 
-        float3 facetB; 
-        BuildOrthonormalBasis( facetNormal, facetT, facetB);
-        float alpha = max(roughness * roughness, 0.001); 
-        // Transform view direction into the facet's tangent space. 
-        float3 wiLocal = float3( dot(wi, facetT), dot(wi, facetB), dot(wi, facetNormal)); 
-        // Sample the visible GGX microfacet normal. 
-        float3 HLocal = SampleVNDFGGX( wiLocal, alpha, Xi); 
-        // Transform the sampled microfacet normal back to world space. 
-        float3 H = normalize( HLocal.x * facetT + HLocal.y * facetB + HLocal.z * facetNormal); 
-        // Reflect the incoming direction around H. 
-        float3 wo = normalize(reflect(-wi, H)); float NoV = max(dot(facetNormal, wi), 0.0); float NoL = max(dot(facetNormal, wo), 0.0); 
-        // Invalid sample. 
-        if (NoL <= 0.0 || NoV <= 0.0) 
-        { 
-            sample.direction = wo; 
-            sample.weight = 0.0; 
-            return sample; 
-        } 
-        float NoH = max(dot(facetNormal, H), 0.0); 
-        float VoH = max(dot(wi, H), 0.0); 
-        float3 F = fresnelSchlick(VoH, F0); 
-        float D = D_GGX(NoH, roughness); 
-        float G = G_Smith(NoV, NoL, roughness); 
-        float3 f = (F * D * G) / max(4.0 * NoV * NoL, 1e-6); 
-        // PDF of the sampled GGX reflection direction. 
-        float pdf = PDF_GGX_Reflection( NoV, NoH, VoH, roughness); 
-        float3 weight = f * NoL / max(pdf, 1e-6); 
-        sample.direction = wo; 
-        sample.weight = weight; 
-        return sample; 
+        float AF = 1.0f / (1.0f + constant1_FON * r); // FON A coefficient
+        float BF = r * AF; // FON B coefficient
+        float Si = sqrt(1.0f - (mu * mu));
+        float G = Si * (acos(mu) - Si * mu)
+        + (2.0f / 3.0f) * ((Si / mu) * (1.0f - (Si * Si * Si)) - Si);
+        return AF + (BF * rcppi) * G;
     }
+    float E_FON_approx(float mu, float r)
+    {
+        float mucomp = 1.0f - mu;
+        const float g1 = 0.0571085289f;
+        const float g2 = 0.491881867f;
+        const float g3 = -0.332181442f;
+        const float g4 = 0.0714429953f;
+        float GoverPi = mucomp * (g1 + mucomp * (g2 + mucomp * (g3 + mucomp * g4)));
+        return (1.0f + r * GoverPi) / (1.0f + constant1_FON * r);
+    }
+    // Evaluates EON BRDF value, given inputs:
+    // rho = single-scattering albedo parameter
+    // r = roughness in [0, 1]
+    // exact = flag to select exact or fast approx. version
+    // Note that this implementation assumes throughout that the directions are
+    // specified in a local space where the z-direction aligns with the surface normal.
+    float3 f_EON(float3 rho, float r, float3 wi_local, float3 wo_local, bool exact)
+    {
+        float mu_i = wi_local.z; // Input angle cos
+        float mu_o = wo_local.z; // Output angle cos
+        float s = dot(wi_local, wo_local) - mu_i * mu_o; // QON s term
+        float sovertF = s > 0.0f ? s / max(mu_i, mu_o) : s; // FON s/t
+        float AF = 1.0f / (1.0f + constant1_FON * r); // FON A coefficient
+        float3 f_ss = (rho * rcppi) * AF * (1.0f + r * sovertF); // Single-scatter lobe
+        float EFo = exact ? E_FON_exact(mu_o, r): // FON wo albedo (exact)
+        E_FON_approx(mu_o, r); // FON wo albedo (approx)
+        float EFi = exact ? E_FON_exact(mu_i, r): // FON wi albedo (exact)
+        E_FON_approx(mu_i, r); // FON wi albedo (approx)
+        float avgEF = AF * (1.0f + constant2_FON * r); // Average albedo
+        float3 rho_ms = (rho * rho) * avgEF / (float3(1.0f.xxx) - rho * (1.0f - avgEF));
+        const float eps = 1.0e-7f;
+        float3 f_ms = (rho_ms * rcppi) * max(eps, 1.0f - EFo) // Multi-scatter lobe
+        * max(eps, 1.0f - EFi)
+        / max(eps, 1.0f - avgEF);
+        return f_ss + f_ms;
+    }
+    // Computes EON directional albedo:
+    float3 E_EON(float3 rho, float r, float3 wi_local, bool exact)
+    {
+        float mu_i = wi_local.z; // Input angle cos
+        float AF = 1.0f / (1.0f + constant1_FON * r); // FON A coefficient
+        float EF = exact ? E_FON_exact(mu_i, r): // FON wi albedo (exact)
+        E_FON_approx(mu_i, r); // FON wi albedo (approx)
+        float avgEF = AF * (1.0f + constant2_FON * r); // Average albedo
+        float3 rho_ms = (rho * rho) * avgEF / (float3(1.0f.xxx) - rho * (1.0f - avgEF));
+        return rho * EF + rho_ms * (1.0f - EF);
+    }
+
+    void ltc_coeffs(float mu, float r,
+    out float a, out float b, out float c, out float d)
+    {
+        a = 1.0f + r*(0.303392f + (-0.518982f + 0.111709f*mu)*mu + (-0.276266f + 0.335918f*mu)*r);
+        b = r*(-1.16407f + 1.15859f*mu + (0.150815f - 0.150105f*mu)*r)/(mu*mu*mu - 1.43545f);
+        c = 1.0f + r*(0.20013f + (-0.506373f + 0.261777f*mu)*mu);
+        d = r*(0.540852f + (-1.01625f + 0.475392f*mu)*mu)/(-1.0743f + (0.0725628f + mu)*mu);
+    }
+    float3x3 orthonormal_basis_ltc(float3 w)
+    {
+        float lenSqr = dot(w.xy, w.xy);
+
+        float3 X = lenSqr > 0.0f ? float3(w.x, w.y, 0.0f) * rsqrt(lenSqr) : float3(1.0f, 0.0f, 0.0f);
+
+        float3 Y = float3(-X.y, X.x, 0.0f);
+
+        return float3x3(X, Y, float3(0.0f, 0.0f, 1.0f));
+    }
+    float4 cltc_sample(float3 wo_local, float r, float u1, float u2)
+    {
+        float a, b, c, d;
+        ltc_coeffs(wo_local.z, r, a, b, c, d);
+
+        float R = sqrt(u1);
+        float phi = 2.0f * PI * u2;
+
+        float x = R * cos(phi);
+        float y = R * sin(phi);
+
+        float vz = 1.0f / sqrt(d * d + 1.0f);
+        float s = 0.5f * (1.0f + vz);
+
+        x = -lerp(sqrt(1.0f - y * y), x, s);
+
+        float3 wh = float3(x, y, sqrt(max(1.0f - (x * x + y * y), 0.0f)));
+
+        float pdf_wh = wh.z / (PI * s);
+
+        float3 wi = float3(a * wh.x + b * wh.z, c * wh.y, d * wh.x + wh.z);
+
+        float len = length(wi);
+        float detM = c * (a - b * d);
+
+        float pdf_wi = pdf_wh * len * len * len / detM;
+
+        float3x3 fromLTC = orthonormal_basis_ltc(wo_local);
+
+        // Matches: fromLTC * wi
+        wi = normalize(mul(fromLTC, wi));
+
+        return float4(wi, pdf_wi);
+    }
+    float cltc_pdf(float3 wo_local,float3 wi_local, float r)
+    {
+        float3x3 toLTC = transpose(orthonormal_basis_ltc(wo_local));
+
+        // Matches: toLTC * wi_local
+        float3 wi = mul(toLTC, wi_local);
+
+        float a, b, c, d;
+        ltc_coeffs(wo_local.z, r, a, b, c, d);
+
+        float detM = c * (a - b * d);
+
+        float3 wh = float3(c * (wi.x - b * wi.z), (a - b * d) * wi.y, -c * (d * wi.x - a * wi.z));
+
+        float lenSqr = dot(wh, wh);
+
+        float vz = 1.0f / sqrt(d * d + 1.0f);
+        float s = 0.5f * (1.0f + vz);
+
+        float pdf = detM * detM /(lenSqr * lenSqr) *max(wh.z, 0.0f) /(PI * s);
+
+        return pdf;
+    }
+
+    float3 uniform_lobe_sample(float u1, float u2)
+    {
+        float sinTheta = sqrt(1.0f - u1*u1); float phi = 2.0f * PI * u2;
+        return float3(sinTheta * cos(phi), sinTheta * sin(phi), u1);
+    }
+    // Samples (via CLTC) from EON BRDF, given inputs:
+    // rho = single-scattering albedo parameter
+    // wo_local = direction of outgoing ray (directed away from vertex)
+    // r = roughness in [0, 1]
+    // u1, u2 = IID uniform random numbers in [0,1]
+    // Returns vec4(vec3(wi_local), pdf)
+    float4 sample_EON(float3 wo_local, float r, float u1, float u2)
+    {
+        float mu = wo_local.z;
+        float P_u = pow(r, 0.1f) * (0.162925f + (-0.372058f + (0.538233f - 0.290822f*mu)*mu)*mu);
+        float P_c = 1.0f - P_u; // Probability of CLTC sample
+        float4 wi; float pdf_c;
+        if (u1 <= P_u) {
+            u1 = u1 / P_u;
+            wi.rgb = uniform_lobe_sample(u1, u2); // Sample wi from uniform lobe
+        pdf_c = cltc_pdf(wo_local, wi.xyz, r); } // Evaluate CLTC PDF at wi
+        else {
+            u1 = (u1 - P_u) / P_c;
+            wi = cltc_sample(wo_local, r, u1, u2); // Sample wi from CLTC lobe
+        pdf_c = wi.w; }
+        const float pdf_u = 1.0f / (2.0f * PI);
+        wi.w = P_u*pdf_u + P_c*pdf_c; // MIS PDF of wi
+        return wi;
+    }
+    // PDF corresponding to the above sampling routine
+    float pdf_EON(float3 wo_local, float3 wi_local, float r)
+    {
+        float mu = wo_local.z;
+        float P_u = pow(r, 0.1f) * (0.162925f + (-0.372058f + (0.538233f - 0.290822f*mu)*mu)*mu);
+        float P_c = 1.0f - P_u;
+        float pdf_c = cltc_pdf(wo_local, wi_local, r);
+        const float pdf_u = 1.0f / (2.0f * PI);
+        return P_u*pdf_u + P_c*pdf_c;
+    }
+
 
 
 #endif //BRDF_HLSL

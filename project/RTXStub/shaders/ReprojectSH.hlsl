@@ -43,7 +43,7 @@ prevDiffuse = previousDiffuseBuffer[prevCoord].rgb;
 
     float3 blendedDiffuse = currDiffuse.rgb;
   
-        float blendWeight = 1.0f / frameCount;
+        float blendWeight = 0.35;
         blendedDiffuse = lerp(prevDiffuse, currDiffuse.rgb, blendWeight);
         historyLength = min(255.0f, frameCount);
         
