@@ -22,7 +22,7 @@ $input v_texcoord0
 // Bloom strength
 
 
-#define BLOOM_MULTIPLIER 4.5
+#define BLOOM_MULTIPLIER 2.5
 
 
 uniform vec4 gToneMappingDebugMode;
@@ -80,7 +80,7 @@ const mat3 matrix_xyz_to_rec2020 = transpose(mat3(1.71665118797, -0.355670783776
     vec4 raster = texture2D(s_gRasterizedInput, fragInput.texcoord0);
     //raster.rgb = linearToSRGB(ACESFittedTonemap(raster.rgb));
     vec3 bloom = upscaleBloomFiltered(fragInput.texcoord0, s_gBloomBuffer, ScreenSize.xy);
-    hdr *= 1.15;
+   
     #if ENABLE_HDR
     //hdr /= 11.2;
     #endif

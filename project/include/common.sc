@@ -5,10 +5,10 @@ float luminance(vec3 clr){return dot(clr,vec3(.2126,.7152,.0722));}
 // https://en.wikipedia.org/wiki/SRGB#From_CIE_XYZ_to_sRGB
 vec3 linearToSRGB(vec3 c){
     // Full linear to sRGB function
-    return max(mix(12.92*c,1.055*pow(c,1./2.4)-.055,greaterThan(c,.0031308)),0);
+    //return max(mix(12.92*c,1.055*pow(c,1./2.4)-.055,greaterThan(c,.0031308)),0);
     
     // Approximation
-    //return max(pow(c, 1.0 / 2.2), 0);
+    return max(pow(c, 1.0 / 2.2), 0);
 }
 
 // Bloom implementation is based on: https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom

@@ -442,14 +442,13 @@
                     }
 
                     // 4. Radiance scaling factor across the IOR boundary interface
-                    float eta_factor = hitInfo.frontFacing ? (eta * eta) : (1.0 / (eta * eta)); 
-                    rayColor *= eta_factor; 
+                  
 
                     // 5. CORRECT MONTE CARLO WEIGHTING
                     // Component (1.0 - F_lum) divided by Selection Probability (transmissionProbability)
                     // Since they are equal, this evaluates to 1.0, keeping your throughput completely stable!
-                    float3 transmissionWeight = 1.0 - F_smooth;
-                    rayColor *= transmissionWeight / max(transmissionProbability, 1e-4);
+                    float3 transmissionWeight = (1.0 - F_smooth) ;
+                    rayColor *= (transmissionWeight / max(transmissionProbability, 1e-4));
                 } 
                 
             } 

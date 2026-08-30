@@ -61,7 +61,7 @@
 // If radius is made larger sun is more intense
 // Recommended to reduce sunlight intensity if increased
 #define SUN_RADIUS   0.00465f 
-#define SUN_INTENSITY 1.0
+#define SUN_INTENSITY 0.8
 #define CLOUD_SHADOW_OPACITY 0.616
 #define ENABLE_SUNLIGHT 1
 
@@ -70,7 +70,7 @@
 
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
-#define EMISSION_STENGTH  150
+#define EMISSION_STENGTH  85
 
 
 #define VL_FOG_STEPS 16
@@ -83,12 +83,12 @@
 //Sun colors alpha stores intensity
 #define DAY_SUN_COLOR float4(1.0,0.7925,0.515, 1.8)
 #define NOON_SUN_COLOR float4(1.0,0.95,0.85, 1.25)
-#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 1.3)
+#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 1.6)
 #define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.043)
 
 //sky intensity multipliers
 
-#define RAYLEIGH_MULT                  1.1 //brightness of the sky
+#define RAYLEIGH_MULT                  2.25 //brightness of the sky
 #define NIGHT_INTENSITY                0.1 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
@@ -103,7 +103,7 @@
 #define DAY_HORIZON_COL                float3(0.6453, 0.8176, 1.0)
 #define NOON_HORIZON_COL               float3(0.6453, 0.8176, 1.0)
 #define SUNRISE_HORIZON_COL            float3(1.1827, 0.5302, 0.2541)
-#define SUNSET_HORIZON_COL             float3(1.1784, 0.3451, 0.1359)
+#define SUNSET_HORIZON_COL             float3(1.1784, 0.5451, 0.1359)
 #define NIGHT_HORIZON_COL              float3(0.0559, 0.1169, 0.2114)
 
 //sky ground colors
