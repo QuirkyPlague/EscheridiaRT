@@ -26,10 +26,10 @@
 #define DISABLE_RASTER_OBJECTS 0
 
 // Lighting Parameters
-#define SUN_AZIMUTH               (0.725)                   // Vanilla: 0.0
+#define SUN_AZIMUTH               (0)                   // Vanilla: 0.0
 
 // The sun's zenith angle in radians
-#define SUN_ZENITH                (PI / 4.1)                   // Vanilla: 0.0, BetterRTX: PI / 4
+#define SUN_ZENITH                (0)                   // Vanilla: 0.0, BetterRTX: PI / 4
 
 
 #define CHROMATIC_ABERRATION_INTENSITY 0.01
@@ -70,7 +70,7 @@
 
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
-#define EMISSION_STENGTH  85
+#define EMISSION_STENGTH  300
 
 
 #define VL_FOG_STEPS 16
@@ -128,8 +128,8 @@
 #define GROUND_BLEND                    0.55
 
 
-#define WAVE_FADE_START 32.0
-#define WAVE_FADE_END   159.0
+#define WAVE_FADE_START 24.0
+#define WAVE_FADE_END   500.0
 
 #define WAVE_SMOOTHING                                      (0.0513)
 #define WAVE_INTENSITY                                      (0.0652)

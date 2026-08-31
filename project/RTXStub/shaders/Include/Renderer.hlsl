@@ -627,8 +627,8 @@
 
         float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
 
-        // Limit to 100 overlapping translucent surfaces.
-        for (int i = 0; i < 100; i++)
+        
+        for (int i = 0; i < 16; i++)
         {
             uint baseSeed = uint(pixelPos.x) + uint(pixelPos.y) * g_view.renderResolution.x;
             baseSeed ^= g_view.frameCount * 0x9E3779B9u;
