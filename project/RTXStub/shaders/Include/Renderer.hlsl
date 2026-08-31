@@ -324,16 +324,25 @@
 
             
             if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
-                surfaceInfo.roughness = 0.035 ;
-
+                surfaceInfo.roughness = 0.035;
                 const float waveSmoothness = WAVE_SMOOTHING;
                 const float waveStrength = WAVE_INTENSITY;
                 float3 worldPos = surfaceInfo.position - g_view.waveWorksOriginInSteveSpace;
-                worldPos = worldPos - floor(worldPos / 1024) * 1024; // Bedrock may reset position every 1024 blocks, so we can only reliably calculate world position within 1024 blocks chunk.
-                float3 waveNorm = surfaceInfo.normal;
+                // Calculate distance BEFORE wrapping the position
+                float2 playerXZ = g_view.viewOriginSteveSpace.xz;
+                float2 waterXZ = surfaceInfo.position.xz;
 
-                waveNorm = waveNormal(worldPos.xz, waveSmoothness, waveStrength);
-                surfaceInfo.normal =  waveNorm;
+                float distanceFromPlayer = length(waterXZ - playerXZ);
+                // Bedrock may reset position every 1024 blocks
+                worldPos = worldPos - floor(worldPos / 1024.0) * 1024.0;
+                float waveFade = 1.0 - smoothstep(WAVE_FADE_START, WAVE_FADE_END, distanceFromPlayer);
+                
+                float3 flatNormal = geometryInfo.geometryNormal;
+                float3 waveNorm = waveNormal(worldPos.xz,waveSmoothness,waveStrength);
+                // Fade waves out with distance
+                float fade = 1.15 - exp(-distanceFromPlayer / 32);
+                surfaceInfo.normal = normalize(lerp(flatNormal,waveNorm, waveFade));
+                surfaceInfo.roughness = lerp(0.235,surfaceInfo.roughness,        waveFade);
             }
 
             bool isCloud = objectInstance.flags & kObjectInstanceFlagClouds;
@@ -362,7 +371,7 @@
             N = FixShadingNormal(ng,N);
             BuildOrthonormalBasis(N, T, B);
             float3 tangentView = float3(dot(V, T),dot(V, B),dot(V, N));
-            surfaceInfo.roughness = lerp(surfaceInfo.roughness, surfaceInfo.roughness * 0.3, g_view.rainLevel);
+            //surfaceInfo.roughness = lerp(surfaceInfo.roughness, surfaceInfo.roughness * 0.3, g_view.rainLevel);
             float roughness = max(surfaceInfo.roughness * surfaceInfo.roughness, 0.0);
             
             bool isWater = hitInfo.materialType == MATERIAL_TYPE_WATER;
@@ -388,26 +397,26 @@
                 
                 if (Xi.x < specularProbability) {
                     
-                     float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
-                float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
-                nextDirection = normalize(tangentReflDir.x * T +tangentReflDir.y * B +tangentReflDir.z * N);
-                float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N);
-                float NdotL = max(dot(N, nextDirection), 0.0001); 
-                float NdotV = max(dot(N, V), 0.0001); 
-                float NdotH = max(dot(N, H), 0.0001);
-                float VdotH = max(dot(V, H), 0.0001); 
-                float LdotH = max(dot(nextDirection,H), 0.001);
+                    float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
+                    float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
+                    nextDirection = normalize(tangentReflDir.x * T +tangentReflDir.y * B +tangentReflDir.z * N);
+                    float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N);
+                    float NdotL = max(dot(N, nextDirection), 0.0001); 
+                    float NdotV = max(dot(N, V), 0.0001); 
+                    float NdotH = max(dot(N, H), 0.0001);
+                    float VdotH = max(dot(V, H), 0.0001); 
+                    float LdotH = max(dot(nextDirection,H), 0.001);
 
-                float3 F = fresnelSchlick(VdotH, F0); 
-                float D = D_GGX(NdotH, surfaceInfo.roughness);
-                float G = G_Smith(NdotV, NdotL, surfaceInfo.roughness); 
-                float3 specWeight = (F * D * G) / (4.0 * NdotV * NdotL);
-                
-                float pdf_r = PDF_GGX_Reflection(NdotV, NdotH, VdotH, surfaceInfo.roughness); 
-                float combinedPdf = max(pdf_r, 1e-6); 
-                
-                rayColor *= (specWeight * NdotL) /
-                (combinedPdf * specularProbability);
+                    float3 F = fresnelSchlick(VdotH, F0); 
+                    float D = D_GGX(NdotH, surfaceInfo.roughness);
+                    float G = G_Smith(NdotV, NdotL, surfaceInfo.roughness); 
+                    float3 specWeight = (F * D * G) / (4.0 * NdotV * NdotL);
+                    
+                    float pdf_r = PDF_GGX_Reflection(NdotV, NdotH, VdotH, surfaceInfo.roughness); 
+                    float combinedPdf = max(pdf_r, 1e-6); 
+                    
+                    rayColor *= (specWeight * NdotL) /
+                    (combinedPdf * specularProbability);
                 } 
                 else { 
                     float IOR = isWater ? 1.333 : 1.5; 
@@ -442,7 +451,7 @@
                     }
 
                     // 4. Radiance scaling factor across the IOR boundary interface
-                  
+                    
 
                     // 5. CORRECT MONTE CARLO WEIGHTING
                     // Component (1.0 - F_lum) divided by Selection Probability (transmissionProbability)
@@ -552,8 +561,8 @@
                 sunContribution = 0;
             #endif
 
-           
-            totalRadiance += sunContribution * w;
+            
+            totalRadiance += sunContribution;
 
             // Apply emissive lighting.
             float3 emission = surfaceInfo.color * surfaceInfo.emissive * EMISSION_STENGTH;
@@ -706,9 +715,9 @@
                 float g = 0.835; // Forward-scattering fog.
                 float ambientG = 0.435;
                 float sunPhase = inWater ? waterPhase(VdotL) : PhaseHG(VdotL, g);
-        
+                
 
-    
+                
 
                 
 
@@ -728,7 +737,7 @@
 
                 rayState.throughput *= scatterWeight * (sampledPhase / max(phasePdf, 1e-6));
                 
-                  if (i > 1) {
+                if (i > 1) {
                     // 1. Use perceived luminance instead of raw max component
                     float p = min(1, max(rayState.throughput.x, max(rayState.throughput.y, rayState.throughput.z)));
                     float rr = NextFloat(rng);

@@ -121,8 +121,8 @@ vec3 agx(vec3 val){
         .0423756549057051,.0784336,.879142973793104
     );
     
-    const float minEV=-12.47393;
-    const float maxEV=4.026069;
+    const float minEV= AGX_MIN_EV;
+    const float maxEV= AGX_MAX_EV;
     
     // Match the original HLSL transform order exactly.
     val=mul(agxMat,val);
@@ -168,7 +168,7 @@ vec3 agxLook(vec3 val){
     vec3 offset=vec3(0.,0.,0.);
     vec3 slope=vec3(1.,1.,1.);
     vec3 power=vec3(1.,1.,1.);
-    float sat=1.35;
+    float sat=1.15;
     
     #if AGX_LOOK==1
     // Golden
@@ -177,7 +177,7 @@ vec3 agxLook(vec3 val){
     sat=.8;
     #elif AGX_LOOK==2
     // Punchy
-    power=vec3(1.3,1.3,1.3);
+    power=vec3(1.5,1.5,1.5);
     #endif
     
     val=pow(max(val*slope+offset,vec3(0.,0.,0.)),power);
