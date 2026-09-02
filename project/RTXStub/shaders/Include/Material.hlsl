@@ -69,7 +69,8 @@ struct GeometryInfo
     // TBN
     float3 tangent;
     float3 bitangent;
-    float3 geometryNormal;
+    float3 geometryNormal; // world space geometry normal
+    float3 modelNormal;
 
     // Vertex attributes
     float3 position;
@@ -136,7 +137,7 @@ GeometryInfo GetGeometryInfo(HitInfo hitInfo, ObjectInstance objectInstance) {
     // Catch cases where vertex color is not provided (block breaking overlay).
     if (!colorByteOffset) geometryInfo.color = 1;
 
-    geometryInfo.geometryNormal = normalize(cross((positions[1] - positions[0]), (positions[2] - positions[0])));
+    geometryInfo.modelNormal = normalize(cross((positions[1] - positions[0]), (positions[2] - positions[0])));
     // vertexNormal = normalize(vertexNormal); // Vertex normal is not normalized as GeometryInfo is meant to pass raw attribute values.
 
     // To compute tangent and bitangent (aligned to UV), we have to solve for T and B from:
@@ -158,10 +159,10 @@ GeometryInfo GetGeometryInfo(HitInfo hitInfo, ObjectInstance objectInstance) {
         // If UV change is not sufficient enough to find T and B, use arbitrary vectors instead.
         // Fixes NANs in end portal.
 
-        float3 helperVec = abs(dot(float3(0, 1, 0), geometryInfo.geometryNormal)) > 0.99 ? float3(1, 0, 0) : float3(0, 1, 0);
+        float3 helperVec = abs(dot(float3(0, 1, 0), geometryInfo.modelNormal)) > 0.99 ? float3(1, 0, 0) : float3(0, 1, 0);
 
-        geometryInfo.tangent = cross(geometryInfo.geometryNormal, helperVec);
-        geometryInfo.bitangent = cross(geometryInfo.geometryNormal, geometryInfo.tangent);
+        geometryInfo.tangent = cross(geometryInfo.modelNormal, helperVec);
+        geometryInfo.bitangent = cross(geometryInfo.modelNormal, geometryInfo.tangent);
     }
     else
     {
@@ -182,7 +183,10 @@ GeometryInfo GetGeometryInfo(HitInfo hitInfo, ObjectInstance objectInstance) {
     geometryInfo.tangent = normalize(geometryInfo.tangent);
     geometryInfo.bitangent = normalize(geometryInfo.bitangent);
 
-    geometryInfo.pbrTextureDataIndex = PBRTextureIdByteOffset ? 
+    // get the worldspace geometry normal from the model normal
+    geometryInfo.geometryNormal = normalize(mul(geometryInfo.modelNormal,(float3x3)objectInstance.modelToWorld));
+     
+     geometryInfo.pbrTextureDataIndex = PBRTextureIdByteOffset ? 
         vertexBuffer.Load<uint>((vertices[0] + objectInstance.vertexOffsetInBaseVertices) * objectInstance.vertexStride + PBRTextureIdByteOffset) // TODO: is `& 0xffff` needed?
          : kInvalidPBRTextureHandle;
 
@@ -349,7 +353,7 @@ SurfaceInfo MaterialVanilla(HitInfo hitInfo, GeometryInfo geometryInfo, ObjectIn
     surfaceInfo.Init();
 
     uint normalByteOffset = objectInstance.offsetPack1 >> 8;
-    float3 modelSpaceNormal = normalByteOffset ? geometryInfo.vertexNormal : geometryInfo.geometryNormal;
+    float3 modelSpaceNormal = normalByteOffset ? geometryInfo.vertexNormal : geometryInfo.modelNormal;
     surfaceInfo.normal = normalize(mul(modelSpaceNormal, (float3x3)objectInstance.modelToWorld));
 
     surfaceInfo.position = mul(float4(geometryInfo.position, 1), objectInstance.modelToWorld);
@@ -542,22 +546,12 @@ SurfaceInfo MaterialVanilla(HitInfo hitInfo, GeometryInfo geometryInfo, ObjectIn
                 texNormal = normalize(texNormal);
             }
             // TODO: in the future make normal computations relative to vertex normal (doesn't make sense to do it now since entities have no PBR textures and blocks have no vertex normals).
-            float3 worldGeomNormal =
-    normalize(
-        mul(
-            geometryInfo.geometryNormal,
-            (float3x3)objectInstance.modelToWorld));
+        
+   
 
-surfaceInfo.normal =
-    normalize(
-        mul(
-            texNormal,
-            float3x3(
-                tangent,
-                bitangent,
-                worldGeomNormal)));
+            surfaceInfo.normal =normalize(mul(texNormal,float3x3(tangent,bitangent,geometryInfo.geometryNormal)));
                 
-                
+    
         }
     }
 

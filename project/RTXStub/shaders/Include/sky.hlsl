@@ -171,6 +171,9 @@ float3 skyCompute(float3 pos) {
         }
     }
 
+   
+
+
     float zenithBlend = saturate(pow(upPos, ZENITH_BLEND));
     float horizonBlend = saturate(pow(negatedMidPos, HORIZON_BLEND));
     float groundBlend = saturate(pow(negatedDownPos, GROUND_BLEND));
@@ -231,7 +234,7 @@ float3 getSkyColor(float3 color) {
 }
 
 float3 getSun(float3 dir) {
-    float3 sunDir = getTrueDirectionToSun();
+    float3 sunDir = inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
     float3 moonDir = getTrueDirectionToMoon();
     float cosThetaSun = dot(dir, sunDir);
     float mDotL = dot(dir, moonDir);
@@ -250,7 +253,7 @@ float3 getSun(float3 dir) {
     float angularDist = clamp(invCos, -1.0, 1.0);
     float angularDist1 = clamp(invCos1, -1.0, 1.0);
     float sunHeightFactor = smoothstep(groundBlend, groundBlend + 0.28, dir.y);
-    float sunRadius = 0.03 * 1.0;
+    float sunRadius = inEnd ? END_SUN_DISC_SIZE : 0.013 * 1.0;
 
     float theta = acos(clamp(cosThetaSun, -1.0, 1.0));
 
@@ -261,25 +264,80 @@ float3 getSun(float3 dir) {
     float mu = sqrt(clamp(4.0 - radial * radial, 0.0, 4.0));
 
     float limbDarkening = 1.0 - 0.6 * (1.0 - mu);
-    float3 sunColor = getSunColor1(0..xxxx).rgb;
+    float3 sunColor = inEnd ? END_SUN_COLOR * END_SUN_DISC_INTENSITY : getSunColor1(0..xxxx).rgb;
+    float3 twinSunDisc = 0.0;
+    #if USE_END_TWIN_SUNS
+    if(inEnd) {
+        float3 twinSunDir = END_TWIN_SUN_DIRECTION;
+        float cosThetaTwinSun = dot(dir, twinSunDir);
+        float invCosTwinSun = 1.0 - cosThetaTwinSun;
+        float angularDistTwinSun = clamp(invCosTwinSun, -1.0, 1.0);
+        float thetaTwinSun = acos(clamp(cosThetaTwinSun, -1.0, 1.0));
+        float radialTwinSun = thetaTwinSun / END_TWIN_SUN_DISC_SIZE;
+        float twinSun = 1.0 - smoothstep(0.9, 1.0, radialTwinSun);
+        twinSunDisc = twinSun * END_TWIN_SUN_COLOR * END_TWIN_SUN_DISC_INTENSITY;
+    }
+    #endif
 
-    float3 fullSun =
-    sun *
-    limbDarkening *
-    sunColor *
-    20.0 *
-    sunHeightFactor;
+    float3 fullSun = inEnd ? sun * limbDarkening * sunColor * 2.0 + twinSunDisc : sun * limbDarkening * sunColor * 450.0 * sunHeightFactor;
+    
     float moon = smoothstep(
         0.0002 * 0.86,
         0.0001 * 0.86 * 0.03,
         angularDist1);
 
     float3 moonColor =  float3(0.12, 0.321,0.65);
-    float3 fullmoon = moon * moonColor * 30 * sunHeightFactor;
+    float3 fullmoon = inEnd ? 0.0 : moon * moonColor * 30 * sunHeightFactor;
 
     float3 celestial = fullSun + fullmoon;
 
     return celestial;
+}
+
+// Maps a 3D vector to 2D UV coordinates on an unwrapped cross/box layout
+float2 CubeToUV(float3 r, float2 uvScale)
+{
+    float3 absR = abs(r);
+    float2 uv = float2(0, 0);
+    int faceIndex = 0;
+    float scale;
+    // Find the dominant axis to determine the cube face
+    if (absR.x >= absR.y && absR.x >= absR.z)
+    {
+        // X-dominant (Left/Right faces)
+        faceIndex = r.x > 0 ? 0 : 1;
+        scale = 0.5f / absR.x;
+        uv.x = r.x > 0 ? -r.z : r.z;
+        uv.y = -r.y;
+        uv /= absR.x;
+    }
+    else if (absR.y >= absR.x && absR.y >= absR.z)
+    {
+        // Y-dominant (Top/Bottom faces)
+        faceIndex = r.y > 0 ? 2 : 3;
+        scale = 0.5f / absR.y;
+        uv.x = r.x;
+        uv.y = r.y > 0 ? r.z : -r.z;
+        uv /= absR.y;
+    }
+    else
+    {
+        // Z-dominant (Front/Back faces)
+        faceIndex = r.z > 0 ? 4 : 5;
+        scale = 0.5f / absR.z;
+        uv.x = r.z > 0 ? r.x : -r.x;
+        uv.y = -r.y;
+        uv /= absR.z;
+    }
+    
+   return frac(mad(uv, float2(scale, scale), float2(0.5f, 0.5f)) * uvScale);
+}
+
+float3 endSkyColor(float3 dir)
+{
+     Texture2D skyTexture = textures[g_view.skyTextureIdx];
+    float3 staticSkyTex = skyTexture.SampleLevel(linearSampler, CubeToUV(dir, g_view.skyTextureUVScale), 0).rgb;
+    return staticSkyTex;
 }
 
 float3 skyScattering1(float3 pos) {
@@ -288,11 +346,13 @@ float3 skyScattering1(float3 pos) {
 #else
    
     float3 dir = normalize(pos);
-    float3 sunDir = getTrueDirectionToSun();
+     float3 sunDir = inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
     float3 moonDir = getTrueDirectionToMoon();
 
+    float3 endTwinSunDir = END_TWIN_SUN_DIRECTION;
+
     float VoL = dot(dir, sunDir);
-    float rayleigh = Rayleigh(VoL) * RAYLEIGH_MULT * 13;
+    float rayleigh = inEnd ? Rayleigh(VoL) * END_RAYLEIGH_MULT  : Rayleigh(VoL) * RAYLEIGH_MULT * 13;
 
 
     float upPos = saturate(dir.y);
@@ -392,14 +452,18 @@ float3 skyScattering1(float3 pos) {
             break;
         }
     }
-
-    float zenithBlend = saturate(pow(upPos, ZENITH_BLEND));
-    float horizonBlend = saturate(pow(negatedMidPos, HORIZON_BLEND));
-    float groundBlend = saturate(pow(negatedDownPos, GROUND_BLEND));
+    
+    float zenithBlend = saturate(pow(upPos, inEnd ? END_ZENITH_BLEND : ZENITH_BLEND));
+    float horizonBlend = saturate(pow(negatedMidPos, inEnd ? END_HORIZON_BLEND : HORIZON_BLEND));
+    float groundBlend = saturate(pow(negatedDownPos, inEnd ? END_GROUND_BLEND : GROUND_BLEND));
 
     zenithCol = lerp(zenithCol, rainZenCol * rainIntensityShift, g_view.rainLevel);
 	horizonCol = lerp(horizonCol, rainHorCol * rainIntensityShift,  g_view.rainLevel);
 	groundCol = lerp(groundCol, rainGrndCol * rainIntensityShift,  g_view.rainLevel);
+
+     zenithCol = inEnd ? END_ZENITH_COLOR : zenithCol;
+    horizonCol = inEnd ? END_HORIZON_COLOR : horizonCol;
+    groundCol = inEnd ? END_GROUND_COLOR : groundCol;
 
     zenithCol *= rayleigh * zenithBlend;
     horizonCol *= rayleigh * horizonBlend;
@@ -413,15 +477,19 @@ float3 skyScattering1(float3 pos) {
     float sVoL = dot(dir, sunDir);
     float mVoL = dot(dir, moonDir);
 
-    float miePhase = HG(sVoL, mieScale);
+    float twinVol = dot(dir, endTwinSunDir);
 
+    float miePhase = HG(sVoL, inEnd ? END_MIE_COLOR.a : mieScale);
+    float twinMiePhase = HG(twinVol, 0.85);
+    mieScat = inEnd ? END_MIE_COLOR.rgb : mieScat;
     float3 mieColors = sunColor.rgb * mieScat * miePhase * 0.7;
-
+    float3 twinMieColors = END_TWIN_SUN_COLOR * float3(0.3, 0.5, 0.8)  * twinMiePhase;
     float moonPhase = HG(mVoL, 0.931);
     float3 mieNight = moonMieScatterColor * moonPhase * 0.017;
 
     float3 finalMie = mieColors + mieNight;
-
+   
+    
     float sunElev = sunDir.y;
     float sunAboveMask = smoothstep(-0.08, 0.2, sunElev);
 
@@ -438,11 +506,19 @@ float3 skyScattering1(float3 pos) {
     mieColors = mieScat * miePhase_clamped * 0.85;
     finalMie = (mieColors * mieVisibility * dawnDuskMix) + mieNight;
 
+     #if USE_END_TWIN_SUNS
+    if(inEnd) {
+        finalMie +=twinMieColors;
+    }
+    #endif
+
     float3 sun = getSun(dir);
 
     float3 color = sky + finalMie;
+    color = inEnd ? lerp(color, endSkyColor(dir), 0.25)  : color;
     return color + sun;
     #endif
 }
+
 
 #endif // SKY_HLSL

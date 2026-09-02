@@ -1,5 +1,7 @@
 #include "Include/Generated/Signature.hlsl"
 #include "Include/Util.hlsl"
+#include "Include/settings.hlsl"
+
 
 [numthreads(16, 16, 1)]
 void FinalCombine(
@@ -27,12 +29,23 @@ void FinalCombine(
     float3 historyColor = outputBufferReferencePathTracer[pixelPos].rgb;
     uint historyLength = readAccumulationFrameIdx();
 
-    if (historyLength) {
-        historyColor = lerp(historyColor, currentSample, 1./(historyLength+1));
-    } else {
-        // This doesn't let the NaNs and INFs persist between accumulations.
-        historyColor = currentSample;
+    #if DO_SAMPLE_LIMITS
+    if (historyLength < MAX_ACCUMULATED_SAMPLES) {
+        if (historyLength) {
+            historyColor = lerp(historyColor, currentSample, 1./(historyLength+1));
+        } else {
+            // This doesn't let the NaNs and INFs persist between accumulations.
+            historyColor = currentSample;
+        }
     }
+    #else
+     if (historyLength) {
+            historyColor = lerp(historyColor, currentSample, 1./(historyLength+1));
+        } else {
+            // This doesn't let the NaNs and INFs persist between accumulations.
+            historyColor = currentSample;
+        }
+    #endif 
         float finalAlpha = 0;
       if (pixelPos.x == 0) finalAlpha = g_view.time;
     outputBufferReferencePathTracer[pixelPos] = float4(historyColor, 1);

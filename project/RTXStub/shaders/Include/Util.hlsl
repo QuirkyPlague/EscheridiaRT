@@ -236,6 +236,18 @@ bool isMoonPrimaryLight() {
     return min(angleDiff, (2*PI)-angleDiff) > 0.001;
 }
 
+bool isInNether()
+{
+	return any(g_view.constantAmbient);
+}
+
+bool isInEnd() {
+    return g_view.skyBackgroundType == 2;
+}
+
+static  bool inNether = isInNether();
+static bool inEnd = isInEnd();
+
 // Need to replace eventually. Initially used to keep coherence with BetterRTX for people familiar with it, but need to ask permission
 float3 rotateBySunAngle(float3 dir, bool inverse = false)
 {
@@ -319,7 +331,15 @@ float3 FixShadingNormal(float3 Ng, float3 Ns)
 }
 float PDF_SunCone()
 {
-    float cosThetaMax = cos(SUN_RADIUS);
+    float cosThetaMax = cos(inEnd ? END_SUN_RADIUS : SUN_RADIUS);
+
+    return 1.0 /
+        (2.0 * PI * (1.0 - cosThetaMax));
+}
+
+float PDF_twinSunCone()
+{
+    float cosThetaMax = cos(END_TWIN_SUN_RADIUS);
 
     return 1.0 /
         (2.0 * PI * (1.0 - cosThetaMax));
@@ -382,12 +402,6 @@ float calcDensityModifier(in float3 position)
 	}
 	return densityModifier;
 }
-bool isInNether()
-{
-	return any(g_view.constantAmbient);
-}
-
-static  bool inNether = isInNether();
 
 // From Raytracing Gems 
 // Clean ray offset that avoids self intersection

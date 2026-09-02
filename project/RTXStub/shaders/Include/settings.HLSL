@@ -2,6 +2,10 @@
 #define SETTINGS_HLSL
 
 
+#define DO_SAMPLE_LIMITS 0
+#define MAX_ACCUMULATED_SAMPLES 1000
+#define MAX_BOUNCES 16
+
 // White furnace test
 #define WHITE_FURNACE 0
 
@@ -23,13 +27,13 @@
 
 // This disables objects that are not raytraced (sign text, particles stars). This will disable the menu panorama 
 // Use this if you want those to not appear in front of DOF for renders
-#define DISABLE_RASTER_OBJECTS 0
+#define DISABLE_RASTER_OBJECTS 1
 
 // Lighting Parameters
-#define SUN_AZIMUTH               (0)                   // Vanilla: 0.0
+#define SUN_AZIMUTH               (0.741)                   // Vanilla: 0.0
 
 // The sun's zenith angle in radians
-#define SUN_ZENITH                (0)                   // Vanilla: 0.0, BetterRTX: PI / 4
+#define SUN_ZENITH                (PI / 4)                   // Vanilla: 0.0, BetterRTX: PI / 4
 
 
 #define CHROMATIC_ABERRATION_INTENSITY 0.01
@@ -39,19 +43,19 @@
 // 0.0-5.0 = close range shots
 // 6.0 - 15.0 midrange shot
 // 16.0+ = long range shot
-#define DOF_FOCAL_DISTANCE 21.25f
+#define DOF_FOCAL_DISTANCE 6.25f
 
 
 // Blur does not scale with focal distance
 // Longer focal distance needs more blur if you want a very focused shot
-#define DOF_BLUR_STRENGTH 76.725f 
+#define DOF_BLUR_STRENGTH 65.725f 
 
 
 // 0 = circular 
 // 1 = polygonal
 // with polygonal the shape is dependent on the blade count
 #define DOF_APERTURE_SHAPE 1
-#define DOF_BLADES 8
+#define DOF_BLADES 6
 
 #define DOF_APERTURE_ROTATION 180.0
 
@@ -61,7 +65,7 @@
 // If radius is made larger sun is more intense
 // Recommended to reduce sunlight intensity if increased
 #define SUN_RADIUS   0.00465f 
-#define SUN_INTENSITY 1.25
+#define SUN_INTENSITY 1.15
 #define CLOUD_SHADOW_OPACITY 0.616
 #define ENABLE_SUNLIGHT 1
 
@@ -70,7 +74,7 @@
 
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
-#define EMISSION_STENGTH  300
+#define EMISSION_STENGTH  350
 
 
 #define VL_FOG_STEPS 16
@@ -86,9 +90,48 @@
 #define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 1.6)
 #define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.043)
 
-//sky intensity multipliers
+// End dimension settings
+#define END_SUN_COLOR float3(0.658,0.221,0.573)
+#define END_SUN_RADIUS 0.135f
+#define END_SUN_DIRECTION normalize(float3(0.85, .48, 1.515))
+#define END_SUN_INTENSITY 310
+#define END_SUN_DISC_SIZE 0.091f // Size of the celestiabl body in the end
+#define END_SUN_DISC_INTENSITY 21.0 // Recommended you keep this low as it can screw with indirect lighting 
+#define USE_ALTERNATE_END_SUN_DISC_COLOR 0
+#define END_SUN_DISC_COLOR float3(1.08,0.421,0.04)
 
-#define RAYLEIGH_MULT                  7.55 //brightness of the sky
+#define USE_END_TWIN_SUNS 1
+#define END_TWIN_SUN_RADIUS 0.0165f
+#define END_TWIN_SUN_DIRECTION normalize(float3(-0.35, 1.68, 4.4715))
+#define END_TWIN_SUN_INTENSITY 4150
+#define END_TWIN_SUN_DISC_SIZE 0.021f
+#define END_TWIN_SUN_DISC_INTENSITY 45.0
+#define END_TWIN_SUN_COLOR float3(0.458,0.521,0.973)
+
+
+#define END_RAYLEIGH_MULT 85.55
+#define END_ZENITH_COLOR float3(0.112, 0.0644, 0.215)
+#define END_HORIZON_COLOR float3(0.432, 0.2244, 0.515)
+#define END_GROUND_COLOR float3(0.052, 0.00144, 0.0115)
+#define END_MIE_COLOR float4(0.311, 0.1437, 0.2775, 0.68)
+
+// End fog
+#define OVERRIDE_RP_END_SCATTERING 0
+#define END_FOG_ANISOTROPY 0.665
+#define END_FOG_INDIRECT_ANISOTROPY 0.65
+#define END_FOG_SCATTERING_INTENSITY 1.25
+#define END_FOG_DIRECT_SCATTER_BOOST 2.0f
+#define END_FOG_SCATTERING_COLOR float3(0.0321, 0.0208, 0.0361)
+#define END_FOG_EXTINCTION_INTENSITY 1.0
+
+
+#define END_ZENITH_BLEND 0.67
+#define END_HORIZON_BLEND 11.5
+#define END_GROUND_BLEND 0.85
+
+
+//sky intensity multipliers
+#define RAYLEIGH_MULT                  9.55 //brightness of the sky
 #define NIGHT_INTENSITY                0.1 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
@@ -124,7 +167,7 @@
 
 //Sky blending points
 #define ZENITH_BLEND                    0.47             
-#define HORIZON_BLEND                   4.5  
+#define HORIZON_BLEND                   9.5  
 #define GROUND_BLEND                    0.55
 
 
@@ -132,7 +175,7 @@
 #define WAVE_FADE_END   500.0
 
 #define WAVE_SMOOTHING                                      (0.0513)
-#define WAVE_INTENSITY                                      (0.0652)
+#define WAVE_INTENSITY                                      (0.1052)
 #define WAVE_FREQUENCY                                      (1.24)
 #define WAVE_OCTAVES                                        (21)
 #define WAVE_SPEED                                          (3.0)
