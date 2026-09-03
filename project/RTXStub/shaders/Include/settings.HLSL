@@ -96,14 +96,14 @@
 #define END_SUN_DIRECTION normalize(float3(0.85, .48, 1.515))
 #define END_SUN_INTENSITY 310
 #define END_SUN_DISC_SIZE 0.091f // Size of the celestiabl body in the end
-#define END_SUN_DISC_INTENSITY 21.0 // Recommended you keep this low as it can screw with indirect lighting 
+#define END_SUN_DISC_INTENSITY 100.0 // Recommended you keep this low as it can screw with indirect lighting 
 #define USE_ALTERNATE_END_SUN_DISC_COLOR 0
 #define END_SUN_DISC_COLOR float3(1.08,0.421,0.04)
 
 #define USE_END_TWIN_SUNS 1
 #define END_TWIN_SUN_RADIUS 0.0165f
 #define END_TWIN_SUN_DIRECTION normalize(float3(-0.35, 1.68, 4.4715))
-#define END_TWIN_SUN_INTENSITY 4150
+#define END_TWIN_SUN_INTENSITY 5650
 #define END_TWIN_SUN_DISC_SIZE 0.021f
 #define END_TWIN_SUN_DISC_INTENSITY 45.0
 #define END_TWIN_SUN_COLOR float3(0.458,0.521,0.973)

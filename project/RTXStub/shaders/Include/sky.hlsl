@@ -255,15 +255,35 @@ float3 getSun(float3 dir) {
     float sunHeightFactor = smoothstep(groundBlend, groundBlend + 0.28, dir.y);
     float sunRadius = inEnd ? END_SUN_DISC_SIZE : 0.013 * 1.0;
 
+    
     float theta = acos(clamp(cosThetaSun, -1.0, 1.0));
-
     float radial = theta / sunRadius;
-
     float sun = 1.0 - smoothstep(0.9, 1.0, radial);
-
     float mu = sqrt(clamp(4.0 - radial * radial, 0.0, 4.0));
-
     float limbDarkening = 1.0 - 0.6 * (1.0 - mu);
+    // Explicit special handling for the end sun disc 
+    // Will calculate the edge of the cirlce and also find the distance from the center
+    if(inEnd)
+    {
+        // 1. Sharp Outer Edge Mask
+        // Cuts off instantly at radial = 1.0. 
+        // step(radial, 1.0) returns 1.0 inside the circle, and 0.0 outside.
+        float sharpMask = step(radial, 1.0);
+
+        // 2. Fade Towards Middle
+        // 'radial' goes from 0.0 (center) to 1.0 (edge). 
+        // Using it directly means the edge is brightest, fading to 0 at the center.
+        float centerFade = radial;
+
+        // Optional: Control the fade curve
+        centerFade = pow(centerFade, 23.0); // Makes the center darker faster
+        centerFade = sqrt(centerFade);    // Keeps the center brighter longer
+
+        // 3. Combine Mask and Gradient
+        sun = centerFade * sharpMask;
+    }
+
+   
     float3 sunColor = inEnd ? END_SUN_COLOR * END_SUN_DISC_INTENSITY : getSunColor1(0..xxxx).rgb;
     float3 twinSunDisc = 0.0;
     #if USE_END_TWIN_SUNS
