@@ -47,7 +47,11 @@ void FinalCombine(
         }
     #endif 
         float finalAlpha = 0;
-      if (pixelPos.x == 0) finalAlpha = g_view.time;
+
+    if (pixelPos.x == 0) finalAlpha = g_view.rainLevel;
+ 
+	
+
     outputBufferReferencePathTracer[pixelPos] = float4(historyColor, 1);
     outputBufferFinal[pixelPos] = float4(historyColor, finalAlpha);
 }

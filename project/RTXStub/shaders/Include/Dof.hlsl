@@ -6,7 +6,7 @@
 #include "settings.hlsl"
 	
 	
-#define ANAMORPHIC_STRETCH 8.0;
+#define ANAMORPHIC_STRETCH 1.9;
 // From Coding Adventures: Ray Tracing https://youtu.be/Qz0KTGYJtUk?si=w0Hq8sTNKwmuw0zv 
 float2 randomPointInCircle(inout PathRNG rngState)
 {
@@ -62,7 +62,6 @@ void computeDOFRay(uint2 pixelCoord, float3 rayOrigin, float3 rayDir, in PathRNG
 	#endif
 
     apertureSample *= DOF_BLUR_STRENGTH / g_view.renderResolution.x;
-    
     outOrigin = rayOrigin + rightVector * apertureSample.x + upVector * apertureSample.y;
     outDirection = normalize(focalPoint - outOrigin);
     #else

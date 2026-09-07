@@ -2,7 +2,6 @@
 
 float luminance(vec3 clr){return dot(clr,vec3(.2126,.7152,.0722));}
 
-// https://en.wikipedia.org/wiki/SRGB#From_CIE_XYZ_to_sRGB
 vec3 linearToSRGB(vec3 c){
     // Full linear to sRGB function
     //return max(mix(12.92*c,1.055*pow(c,1./2.4)-.055,greaterThan(c,.0031308)),0);
@@ -11,11 +10,33 @@ vec3 linearToSRGB(vec3 c){
     return max(pow(c, 1.0 / 2.2), 0);
 }
 
+static const mat3 matrix_rec709_to_xyz=transpose(mat3(.412390917540,.357584357262,.180480793118,.212639078498,.715168714523,.072192311287,.019330825657,.119194783270,.950532138348));
+static const mat3 matrix_xyz_to_p3d65=transpose(mat3(2.49349691194,-.931383617919,-.402710784451,-.829488969562,1.76266406032,.023624685842,.035845830244,-.076172389268,.956884524008));
+static const mat3 matrix_xyz_to_rec2020=transpose(mat3(1.71665118797,-.355670783776,-.253366281374,-.666684351832,1.61648123664,.015768545814,.017639857445,-.042770613258,.942103121235));
+
+vec3 linearToRec2020(vec3 color)
+{
+    return mul(mul(color,matrix_rec709_to_xyz),matrix_xyz_to_rec2020);
+}
+
+vec3 linearToRec2020OETF(vec3 color)
+{
+    vec3 linearColor= max(color,vec3(0.,0.,0.));
+    return mix(4.5*linearColor,1.0992968268*pow(linearColor,vec3(0.45,0.45,0.45))-.0992968268,greaterThan(linearColor,vec3(0.0180539685,0.0180539685,0.0180539685)));
+}
+
 // Bloom implementation is based on: https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom
 float KarisAverage(vec3 col){
     // Formula is 1 / (1 + luma)
     // luma = luminance(gamma_correct(hdr))
-    float luma=luminance(linearToSRGB(col))*.25;
+    
+     float luma = 0.0;     
+     #if COLOR_SPACE == 2
+         luma = luminance(linearToRec2020OETF(col))*.25;
+         #else
+         luma = luminance(linearToSRGB(col))*.25;;
+         #endif
+   
     return 1./(1.+luma);
 }
 vec3 upscaleBloomFiltered(vec2 texCoord,mediump sampler2D _sampler,vec2 windowRes){
@@ -79,6 +100,9 @@ vec3 ACESFittedTonemap(vec3 rgb){
     return rgb;
 }
 
+
+    
+
 vec3 LinearToPQ(vec3 L_in)
 {
     const float PQ_MAX_LUMINANCE=10000.;
@@ -134,10 +158,7 @@ vec3 agx(vec3 val){
 }
 
 vec3 agxEotf(vec3 val){
-    const mat3 matrix_rec709_to_xyz=transpose(mat3(.412390917540,.357584357262,.180480793118,.212639078498,.715168714523,.072192311287,.019330825657,.119194783270,.950532138348));
-    const mat3 matrix_xyz_to_p3d65=transpose(mat3(2.49349691194,-.931383617919,-.402710784451,-.829488969562,1.76266406032,.023624685842,.035845830244,-.076172389268,.956884524008));
-    const mat3 matrix_xyz_to_rec2020=transpose(mat3(1.71665118797,-.355670783776,-.253366281374,-.666684351832,1.61648123664,.015768545814,.017639857445,-.042770613258,.942103121235));
-    
+   
     const mat3 agxMatInv=mat3(
         1.19687900512017,-.0980208811401368,-.0990297440797205,
         -.0528968517574562,1.15190312990417,-.0989611768448433,
@@ -168,7 +189,7 @@ vec3 agxLook(vec3 val){
     vec3 offset=vec3(0.,0.,0.);
     vec3 slope=vec3(1.,1.,1.);
     vec3 power=vec3(1.,1.,1.);
-    float sat=1.15;
+    float sat=1.2;
     
     #if AGX_LOOK==1
     // Golden
@@ -177,7 +198,7 @@ vec3 agxLook(vec3 val){
     sat=.8;
     #elif AGX_LOOK==2
     // Punchy
-    power=vec3(1.5,1.5,1.5);
+    power=vec3(1.45,1.45,1.45);
     #endif
     
     val=pow(max(val*slope+offset,vec3(0.,0.,0.)),power);

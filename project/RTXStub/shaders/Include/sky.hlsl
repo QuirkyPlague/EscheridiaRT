@@ -282,11 +282,14 @@ float3 getSun(float3 dir) {
         // 3. Combine Mask and Gradient
         sun = centerFade * sharpMask;
     }
-
+    
+  
    
     float3 sunColor = inEnd ? END_SUN_COLOR * END_SUN_DISC_INTENSITY : getSunColor1(0..xxxx).rgb;
+  
     float3 twinSunDisc = 0.0;
     #if USE_END_TWIN_SUNS
+
     if(inEnd) {
         float3 twinSunDir = END_TWIN_SUN_DIRECTION;
         float cosThetaTwinSun = dot(dir, twinSunDir);
@@ -297,9 +300,10 @@ float3 getSun(float3 dir) {
         float twinSun = 1.0 - smoothstep(0.9, 1.0, radialTwinSun);
         twinSunDisc = twinSun * END_TWIN_SUN_COLOR * END_TWIN_SUN_DISC_INTENSITY;
     }
+
     #endif
 
-    float3 fullSun = inEnd ? sun * limbDarkening * sunColor * 2.0 + twinSunDisc : sun * limbDarkening * sunColor * 450.0 * sunHeightFactor;
+    float3 fullSun = inEnd ? sun * limbDarkening * sunColor * 15.0 + twinSunDisc : sun * limbDarkening * sunColor * 25.0 * sunHeightFactor;
     
     float moon = smoothstep(
         0.0002 * 0.86,
@@ -372,7 +376,7 @@ float3 skyScattering1(float3 pos) {
     float3 endTwinSunDir = END_TWIN_SUN_DIRECTION;
 
     float VoL = dot(dir, sunDir);
-    float rayleigh = inEnd ? Rayleigh(VoL) * END_RAYLEIGH_MULT  : Rayleigh(VoL) * RAYLEIGH_MULT * 13;
+    float rayleigh = inEnd ? Rayleigh(VoL) * END_RAYLEIGH_MULT  : Rayleigh(VoL) * RAYLEIGH_MULT;
 
 
     float upPos = saturate(dir.y);
@@ -381,9 +385,9 @@ float3 skyScattering1(float3 pos) {
     float midPos = upPos + negatedDownPos;
     float negatedMidPos = 1.0 - midPos;
     //rain
-    const float3 rainZenCol = float3(0.4784, 0.4784, 0.4784) * 4;
-    const float3 rainHorCol = float3(0.7059, 0.7569, 0.7961) * 4;
-    const float3 rainGrndCol = float3(0.1569, 0.1922, 0.2314) *4;
+    const float3 rainZenCol = float3(0.4784, 0.4784, 0.4784) * 15;
+    const float3 rainHorCol = float3(0.7059, 0.7569, 0.7961) * 15;
+    const float3 rainGrndCol = float3(0.1569, 0.1922, 0.2314) * 15;
 
     const int keys = 10;
 
@@ -407,10 +411,10 @@ float3 skyScattering1(float3 pos) {
     };
 
     const float weatherIntensity[7] = {
-        0.35,
-        0.35,
-        0.15,
-        0.1,
+        0.95,
+        0.95,
+        0.45,
+        0.3,
         0.02,
         0.01,
         0.0015
@@ -477,9 +481,9 @@ float3 skyScattering1(float3 pos) {
     float horizonBlend = saturate(pow(negatedMidPos, inEnd ? END_HORIZON_BLEND : HORIZON_BLEND));
     float groundBlend = saturate(pow(negatedDownPos, inEnd ? END_GROUND_BLEND : GROUND_BLEND));
 
-    zenithCol = lerp(zenithCol, rainZenCol * rainIntensityShift, g_view.rainLevel);
-	horizonCol = lerp(horizonCol, rainHorCol * rainIntensityShift,  g_view.rainLevel);
-	groundCol = lerp(groundCol, rainGrndCol * rainIntensityShift,  g_view.rainLevel);
+    zenithCol = lerp(zenithCol, rainZenCol * rainIntensityShift, getBiomeAdjustedRainLevel());
+	horizonCol = lerp(horizonCol, rainHorCol * rainIntensityShift,  getBiomeAdjustedRainLevel());
+	groundCol = lerp(groundCol, rainGrndCol * rainIntensityShift,  getBiomeAdjustedRainLevel());
 
      zenithCol = inEnd ? END_ZENITH_COLOR : zenithCol;
     horizonCol = inEnd ? END_HORIZON_COLOR : horizonCol;
@@ -527,15 +531,22 @@ float3 skyScattering1(float3 pos) {
     finalMie = (mieColors * mieVisibility * dawnDuskMix) + mieNight;
 
      #if USE_END_TWIN_SUNS
+  
     if(inEnd) {
         finalMie +=twinMieColors;
     }
+
     #endif
 
     float3 sun = getSun(dir);
-
-    float3 color = sky + finalMie;
-    color = inEnd ? lerp(color, endSkyColor(dir), 0.25)  : color;
+    float skyLuminance = dot(sky, 1.0);
+    /*
+    sky = pow(sky, 1.5);
+    sky *= skyLuminance / dot(sky, 1.0);
+    */
+    float3 color =  sky + finalMie;
+    color = inEnd ? lerp(color, endSkyColor(dir) * ORIGINAL_END_SKY_INTENSITY, 0.25)  : color;
+    
     return color + sun;
     #endif
 }

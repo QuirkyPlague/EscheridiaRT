@@ -424,6 +424,12 @@ float3 offset_ray(const float3 p, const float3 n)
 
 }
 
+float getBiomeAdjustedRainLevel()
+{
+    if (isInNether() || isInEnd()) return 0.0;
+    
+    return min(g_view.rainLevel, g_view.skyColorBlend);
+}
 
 uint readAccumulationFrameIdx() { return outputBufferToneMappingHistogram[uint2(0,0)]; }
 void storeAccumulationFrameIdx(uint frameIdx) { outputBufferToneMappingHistogram[uint2(0,0)] = frameIdx; }
@@ -439,5 +445,6 @@ void storeLastFrameTimestamp(float timestamp) { outputBufferToneCurve[0..xx] = t
 // Accumulation Start Timestamp
 float readAccumulationStartTimestamp() { return outputBufferToneCurve[uint2(2,0)]; }
 void storeAccumulationStartTimestamp(float timestamp) { outputBufferToneCurve[uint2(2,0)] = timestamp; }
+
 
 #endif

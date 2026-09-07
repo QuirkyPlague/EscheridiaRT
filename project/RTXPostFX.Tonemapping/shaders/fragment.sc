@@ -22,7 +22,7 @@ $input v_texcoord0
 // Bloom strength
 
 
-#define BLOOM_MULTIPLIER 5.5
+#define BLOOM_MULTIPLIER 2.5
 
 
 uniform vec4 gToneMappingDebugMode;
@@ -74,36 +74,57 @@ void Frag(FragmentInput fragInput, inout FragmentOutput fragOutput) {
  const mat3 matrix_xyz_to_p3d65 = transpose(mat3(2.49349691194, -0.931383617919, -0.402710784451, -0.829488969562, 1.76266406032, 0.023624685842, 0.035845830244, -0.076172389268, 0.956884524008));
 const mat3 matrix_xyz_to_rec2020 = transpose(mat3(1.71665118797, -0.355670783776, -0.253366281374, -0.666684351832, 1.61648123664, 0.015768545814, 0.017639857445, -0.042770613258, 0.942103121235));
 	vec3 hdr = texture2D(s_RasterColor, fragInput.texcoord0).rgb;
-    float time = texture2D(s_RasterColor, ivec2(0.0,0.0)).a;
+    float weather = texture2D(s_RasterColor, ivec2(0.0,0.0)).a;
+
+     float bloomRainIntensity = lerp(1.0,   RAIN_BLOOM_BOOST, weather);
+    float exposureEV = texture2D(s_gToneCurve, vec2(3.5 / 256.0, 0.5)).r;
+    float exposure = exposureEV <= -999.0 ? 1.0 : exp2(exposureEV);
 
    // hdr = vhsFilter(fragInput.texcoord0, s_RasterColor, time,u_viewRect.zw );
     vec4 raster = texture2D(s_gRasterizedInput, fragInput.texcoord0);
     //raster.rgb = linearToSRGB(ACESFittedTonemap(raster.rgb));
     vec3 bloom = upscaleBloomFiltered(fragInput.texcoord0, s_gBloomBuffer, ScreenSize.xy);
    
-    #if ENABLE_HDR
-    //hdr /= 11.2;
-    #endif
-    hdr += BLOOM_MULTIPLIER * gBloomMultiplier.x * bloom;
+   
+    hdr = (hdr + BLOOM_MULTIPLIER * bloomRainIntensity * gBloomMultiplier.x * bloom);
     #if DISABLE_RASTER_OBJECTS == 1
-    #if ENABLE_HDR
-       hdr =  mul(mul(hdr, matrix_rec709_to_xyz), matrix_xyz_to_rec2020);
+     #if ENABLE_HDR
+         #if COLOR_SPACE == 2
+         hdr = linearToRec2020(hdr);
+         #elif COLOR_SPACE == 3
+         hdr = mul(mul(hdr, matrix_rec709_to_xyz), matrix_xyz_to_p3d65);
+         #endif
     hdr = tonemapAgX(hdr);
   
     hdr = LinearToPQ(hdr);
     #else
-    hdr = linearToSRGB(tonemapAgX(hdr));
+     hdr = tonemapAgX(hdr);
+         #if COLOR_SPACE == 2
+         hdr = linearToRec2020OETF(hdr);
+         #else
+         hdr = linearToSRGB(hdr);
+         #endif
 
     #endif // ENABLE HDR
     #else
     #if ENABLE_HDR
-   hdr =  mul(mul(hdr, matrix_rec709_to_xyz), matrix_xyz_to_rec2020);
+   #if COLOR_SPACE == 2
+    hdr = linearToRec2020(hdr);
+   #elif COLOR_SPACE == 3
+    hdr = mul(mul(hdr, matrix_rec709_to_xyz), matrix_xyz_to_p3d65);
+   #endif
     hdr = mix((tonemapAgX(hdr)), raster.rgb, raster.a);
    
     hdr = LinearToPQ(hdr);
     #else
     
-    hdr = mix(linearToSRGB(tonemapAgX(hdr)), raster.rgb, raster.a);
+    hdr = tonemapAgX(hdr);
+   #if COLOR_SPACE == 2
+    hdr = linearToRec2020OETF(hdr);
+   #else
+    hdr = linearToSRGB(hdr);
+   #endif
+    hdr = mix(hdr, raster.rgb, raster.a);
     #endif // ENABLE_HDR
     #endif // DISABLE_RASTER_OBJECTS
     vec3 outputColorSRGB = hdr;
