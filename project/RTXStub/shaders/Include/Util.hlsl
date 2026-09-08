@@ -208,6 +208,14 @@ float4 unpackObjectInstanceTintColor(uint packedColor) {
     ) / 255.0;
 }
 
+float3 linearToRec2020(float3 color)
+{
+          static const float3x3 matrix_rec709_to_xyz = transpose(float3x3(0.412390917540, 0.357584357262, 0.180480793118, 0.212639078498, 0.715168714523, 0.072192311287, 0.019330825657, 0.119194783270, 0.950532138348));
+        static const float3x3 matrix_xyz_to_p3d65 = transpose(float3x3(2.49349691194, -0.931383617919, -0.402710784451, -0.829488969562, 1.76266406032, 0.023624685842, 0.035845830244, -0.076172389268, 0.956884524008));
+        static const float3x3 matrix_xyz_to_rec2020 = transpose(float3x3(1.71665118797, -0.355670783776, -0.253366281374, -0.666684351832, 1.61648123664, 0.015768545814, 0.017639857445, -0.042770613258, 0.942103121235));
+    return mul(mul(color,matrix_rec709_to_xyz),matrix_xyz_to_rec2020);
+}
+
 float2 unpackVertexUV(uint packedUV, bool packedUvIncludesBias = false) {
     const float uvScale = 1.0 / 65535.0; // 1.0/0xffff
     const float biasScale = 1.0 / 32768.0;

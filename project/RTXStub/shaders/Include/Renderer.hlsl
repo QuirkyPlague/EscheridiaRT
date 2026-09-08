@@ -99,18 +99,72 @@
 
     
 
-    void RenderSky(inout RayState rayState)
+    void RenderSky(inout RayState rayState, inout PathRNG rng)
     {
         if (all(rayState.throughput == 0)) return;
         
-        float3 finalColor = skyScattering1(rayState.rayDesc.Direction);
-        float skyWeight = 1.0;
-        if (rayState.lastBsdfPdf > 0.0 && rayState.lastSkyPdf > 0.0)
-        {
-            skyWeight = MISWeight(rayState.lastBsdfPdf, rayState.lastSkyPdf);
-        }
+        //float3 finalColor = skyScattering1(rayState.rayDesc.Direction);
         
-        rayState.color += rayState.throughput * finalColor * skyWeight;
+        float3 sunDir =  getDirectionToSun();
+        float3 moonDir = -sunDir;
+
+        float sunFade = saturate(sunDir.y);
+        float moonFade = saturate(moonDir.y);
+
+        float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
+
+        float4 sunColor = getSunColor(float4(0.xxxx));
+        float sunIntensity = 0;
+        const float intensity[8] = {
+            4 * 0.5,
+            4 * 0.4,
+            4 * 0.34,
+            2 * 0.2,
+            5 * 0.03,
+            8 * 0.015,
+            8 * 0.0065,
+            2 * 0.0035
+        };
+
+        const float times[8] = {
+            0.0000000000, // 6000
+            0.1920399368, // 3000
+            0.3466664553, // 1000
+            0.4309642911, // 0
+            0.4746705294, // 23500
+            0.491301561, // 23000
+            0.502156132, // 23000
+            0.5303186402
+        };
+
+        float time = getTime();
+
+        float timediff = clamp(g_view.skyTextureW - 0.491301561, 0, 0.0253534615);
+        timediff *= 1.0 / 0.0253534615;
+        sunIntensity = 2 * 0.0035;
+    
+        [unroll] for (int i = 1; i < 8; i++) {
+            if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i]) {
+                float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
+                sunIntensity = lerp(intensity[i - 1], intensity[i], w);
+
+                break;
+            }
+        }
+        sunIntensity = inEnd ? 1.2 : sunIntensity;
+         mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
+                // The atmosphere function adds the planet radius internally; pass the
+                // existing 1000-meter offset converted to kilometers.
+                float3 rayOriginKm = float3(0.0f, 1000.0f, 0.0f) * 0.001f;
+                float3 finalColor = RenderHillaireAtmosphereLUTless(
+                    rayOriginKm,
+                    rayState.rayDesc.Direction,
+                    mainLightDir,
+                    sunIntensity,
+                    rng);
+        
+        
+        rayState.color += rayState.throughput * finalColor;
     }
 
 
@@ -478,36 +532,36 @@
                     float lightDistribution = D_GGX(NdotHalf, surfaceInfo.roughness);
                     float lightGeometry = G_Smith(NdotView, NdotLight, surfaceInfo.roughness);
                     float3 lightSpecular = (lightFresnel * lightDistribution * lightGeometry) /
-                        max(4.0 * NdotView * NdotLight, 1e-6);
+                    max(4.0 * NdotView * NdotLight, 1e-6);
 
                     float3 localLight = float3(
-                        dot(lightDirection, T),
-                        dot(lightDirection, B),
-                        NdotLight);
+                    dot(lightDirection, T),
+                    dot(lightDirection, B),
+                    NdotLight);
                     float3 localView = float3(
-                        dot(V, T),
-                        dot(V, B),
-                        NdotView);
+                    dot(V, T),
+                    dot(V, B),
+                    NdotView);
                     float3 diffuseColor = surfaceInfo.color * (1.0 - surfaceInfo.metalness);
                     float3 lightDiffuse = (1.0 - lightFresnel) *
-                        f_EON(diffuseColor, surfaceInfo.roughness, localLight, localView, USE_ACCURATE_DIFFUSE_BRDF);
+                    f_EON(diffuseColor, surfaceInfo.roughness, localLight, localView, USE_ACCURATE_DIFFUSE_BRDF);
                     float3 lightBRDF = isTransparentSurface ? lightSpecular : lightDiffuse + lightSpecular;
 
                     RayDesc lightShadowRay;
                     float3 lightShadowTransmission = 0.0;
                     float lightShadowRadius =  POINT_LIGHT_SHADOW_RADIUS;
-                   
-                        lightShadowRay.Origin = offset_ray(surfaceInfo.position, ng);
-                        lightShadowRay.Direction = randConeJitter(
-                            lightDirection,
-                            lightShadowRadius,
-                            NextFloat2(rng));
-                        lightShadowRay.TMin = 0.0;
-                        lightShadowRay.TMax = max(lightDistance - 0.55, 0.0);
+                    
+                    lightShadowRay.Origin = offset_ray(surfaceInfo.position, ng);
+                    lightShadowRay.Direction = randConeJitter(
+                    lightDirection,
+                    lightShadowRadius,
+                    NextFloat2(rng));
+                    lightShadowRay.TMin = 0.0;
+                    lightShadowRay.TMax = max(lightDistance - 0.55, 0.0);
 
-                        shadowPayload lightShadow;
-                        TraceShadowRay(lightShadowRay, lightShadow);
-                        lightShadowTransmission += lightShadow.transmission;
+                    shadowPayload lightShadow;
+                    TraceShadowRay(lightShadowRay, lightShadow);
+                    lightShadowTransmission += lightShadow.transmission;
                     
                     lightShadowTransmission /= float(POINT_LIGHT_SHADOW_SAMPLES);
 
@@ -621,7 +675,7 @@
             float3 sigmaT3 = inEnd ? getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY : getMediaPrimaryExtinction();
             
             sigmaT3 = lerp(sigmaT3, float3(0.0125,0.0125,0.0125), getBiomeAdjustedRainLevel());
-    
+            
 
             float sigmaT =max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z));
 
@@ -724,8 +778,8 @@
                     float lightDistance = sqrt(max(lightDistanceSquared, 1e-6));
                     float3 lightDirection = toLight / lightDistance;
                     float lightPhase = inWater ?
-                        waterPhase(dot(rayState.rayDesc.Direction, lightDirection)) :
-                        PhaseHG(dot(rayState.rayDesc.Direction, lightDirection), g);
+                    waterPhase(dot(rayState.rayDesc.Direction, lightDirection)) :
+                    PhaseHG(dot(rayState.rayDesc.Direction, lightDirection), g);
 
                     RayDesc lightShadowRay;
                     float3 lightShadowTransmission = 0.0;
@@ -734,9 +788,9 @@
                     {
                         lightShadowRay.Origin = scatterPos + 1.0e-4 * lightDirection;
                         lightShadowRay.Direction = randConeJitter(
-                            lightDirection,
-                            lightShadowRadius,
-                            NextFloat2(rng));
+                        lightDirection,
+                        lightShadowRadius,
+                        NextFloat2(rng));
                         lightShadowRay.TMin = 0.0;
                         lightShadowRay.TMax = max(lightDistance - 0.55, 0.0);
 
@@ -760,8 +814,8 @@
                 
 
                 float3 directScatter = rayState.throughput * scatterWeight *
-                    (sunContribution * payload.transmission * sunPhase +
-                     explicitLightContribution + twinSunContribution);
+                (sunContribution * payload.transmission * sunPhase +
+                explicitLightContribution + twinSunContribution);
                 
 
                 rayState.color += directScatter;
@@ -804,7 +858,7 @@
             }
             else
             {
-                RenderSky(rayState);
+                RenderSky(rayState, rng);
                 break;
             }
             

@@ -65,6 +65,10 @@
 // If radius is made larger sun is more intense
 // Recommended to reduce sunlight intensity if increased
 #define SUN_RADIUS   0.00465f 
+#define SUN_DISC_RADIUS 0.00465f
+#define SUN_DISC_EDGE_SOFTNESS 0.08f
+#define SUN_DISC_LIMB_DARKENING 0.6f
+#define SUN_DISC_INTENSITY 50.0f
 #define SUN_INTENSITY 0.815
 #define RAIN_SUN_INTENSITY_MULTIPLIER 0.045
 #define RAIN_BLOOM_BOOST 2.6
@@ -94,7 +98,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 //Sun colors alpha stores intensity
 #define DAY_SUN_COLOR float4(1.0,0.7925,0.415, 1.0)
 #define NOON_SUN_COLOR float4(1.0,0.95,0.75, 1.15)
-#define SUNRISE_SUN_COLOR float4(1.0,0.3137,0.0275, 1.2)
+#define SUNRISE_SUN_COLOR float4(1.0,0.4737,0.175, 0.4)
 #define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.033)
 
 // End dimension settings
@@ -117,7 +121,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define END_TWIN_SUN_COLOR float3(0.458,0.521,0.973)
 #define DRAW_END_SUN_DISCS 1
 
-#define END_RAYLEIGH_MULT 35.55
+#define END_RAYLEIGH_MULT 32.55
 #define END_ZENITH_COLOR float3(0.112, 0.0644, 0.215)
 #define END_HORIZON_COLOR float3(0.432, 0.2244, 0.515)
 #define END_GROUND_COLOR float3(0.052, 0.00144, 0.0115)
@@ -140,7 +144,12 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 
 
 //sky intensity multipliers
-#define RAYLEIGH_MULT                  16.55 //brightness of the sky
+#define RAYLEIGH_MULT                  73.55 //brightness of the sky
+#define SKY_MIE_SCATTERING_STRENGTH    50.0   // atmospheric Mie brightness multiplier
+#define SKY_MIE_FORWARD_G              0.85  // higher values make the Mie lobe more forward-scattering
+#define SKY_HORIZON_STRENGTH           1.55  // additional broad glow centered on the horizon
+#define SKY_HORIZON_WIDTH              5.0  // larger values make the horizon band narrower
+#define SKY_SATURATION                 1.18  // 1.0 is unchanged
 #define NIGHT_INTENSITY                0.02 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
