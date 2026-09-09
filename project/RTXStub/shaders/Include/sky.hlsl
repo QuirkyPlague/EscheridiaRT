@@ -564,14 +564,14 @@
 
     // Scattering coefficients
 
-    static const float3 BETA_RAYLEIGH = float3(5.202f, 13.558f, 33.100f) * 1e-3f;
+    static const float3 BETA_RAYLEIGH = float3(5.202f, 13.558f, 27.100f) * 1e-3f;
     static const float3 END_RAYLEIGH = float3(4.32, 0.931, 9.56) * 1e-4;
 
-    static const float  BETA_MIE_S    = 15.996f * 1e-3f;
-    static const float  BETA_MIE_E    = 22.440f * 1e-3f;
+    static const float  BETA_MIE_S    = 33.996f * 1e-3f;
+    static const float  BETA_MIE_E    = 24.440f * 1e-3f;
 
     // Ozone absorption (Chappuis band) - essential to Hillaire's realistic coloration
-    static const float3 BETA_OZONE_ABSORPTION = (float3(0.850f, 1.881f, 0.085f)) * 1e-3;
+    static const float3 BETA_OZONE_ABSORPTION = float3(0.650f, 1.881f, 0.085f) * 1e-3;  
 
     bool RaySphereIntersect(float3 rayOrig, float3 rayDir, float sphereRad, out float t0, out float t1)
     {
@@ -675,9 +675,9 @@
             HashToFloat(PCG_Hash(uint3(seed, 0x13u, 0x71u))) - 0.5f,
             HashToFloat(PCG_Hash(uint3(seed, 0x37u, 0xB3u))) - 0.5f);
         float distanceFromStar = length(cellUv - starOffset);
-        float size = lerp(0.012f, 0.075f, HashToFloat(PCG_Hash(uint3(seed, 0x55u, 0x91u))));
+        float size = lerp(0.022f, 0.105f, HashToFloat(PCG_Hash(uint3(seed, 0x55u, 0x91u))));
         float star = 1.0f - smoothstep(size * 0.3f, size, distanceFromStar);
-        float brightness = lerp(0.25f, 1.0f, HashToFloat(PCG_Hash(uint3(seed, 0xA1u, 0xC7u))));
+        float brightness = lerp(4.65f, 15.2f, HashToFloat(PCG_Hash(uint3(seed, 0xA1u, 0xC7u))));
         float colorMix = HashToFloat(PCG_Hash(uint3(seed, 0xD3u, 0xE9u)));
         float3 starColor = colorMix < 0.5f
             ? lerp(float3(1.0f, 0.78f, 0.58f), float3(1.0f, 0.95f, 0.82f), colorMix * 2.0f)
@@ -692,7 +692,7 @@
     float3 rayDir, 
     float3 sunDir, 
     float  sunIntensity,
-    PathRNG rng)
+    PathRNG rng, bool drawStars)
     {
         if (any(cameraPosKm != cameraPosKm) ||
             any(rayDir != rayDir) ||
@@ -738,12 +738,16 @@
 
         
         float cosTheta = dot(rayDir, sunDir);
+        float lowSunMask = 1.0f - smoothstep(0.10f, 0.30f, max(sunDir.y, 0.0f));
+        float oppositeSideMask = saturate((0.2f - cosTheta) / 0.8f);
+        float antiSolarFade = oppositeSideMask * lowSunMask;
+
         float pR = RayleighPhase(cosTheta) * (inEnd ? END_RAYLEIGH_MULT : RAYLEIGH_MULT);
         float pM = CornetteShanksMiePhase(cosTheta, SKY_MIE_FORWARD_G);
         float3 mieSunColor = inEnd
             ? END_SUN_COLOR
             : getSunColor(float4(0.0f, 0.0f, 0.0f, 0.0f)).rgb;
-        float3 multiscatterFactor = (rayleighColor * 1.2f) * 0.35f;
+       float3 multiscatterFactor = (rayleighColor * 0.12f) * 0.08f;
 
         const float3 horizonColors[7] = {
             NOON_HORIZON_COL,
@@ -820,7 +824,7 @@
             float shadowFactor = 1.0f;
             if (dot(samplePos, sunDir) < 0.0f) 
             {
-                float horizonThicknessKm = 15.0f; 
+                float horizonThicknessKm = 2.0f; 
                 shadowFactor = saturate((rayCenterDist - (EARTH_RADIUS - horizonThicknessKm)) / horizonThicknessKm);
                 shadowFactor *= shadowFactor; 
             }
@@ -843,17 +847,17 @@
             throughput *= stepTransmittance;
         }
         
-    
-
-        float horizonMask = exp(-abs(rayDir.y) * SKY_HORIZON_WIDTH);
-        totalLuminance += horizonColor * horizonMask * max(sunIntensity, 0.05f) * SKY_HORIZON_STRENGTH * 0.05f;
-
+   
         float skyLuminance = dot(totalLuminance, float3(0.2126f, 0.7152f, 0.0722f));
         totalLuminance = lerp(skyLuminance.xxx, totalLuminance, SKY_SATURATION);
     //totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.25)  : totalLuminance;
+    if(drawStars)
+    {
         float3 trueSunDir = getTrueDirectionToSun();
         float nightFactor = smoothstep(0.12f, -0.08f, trueSunDir.y);
         totalLuminance += ProceduralStars(rayDir, nightFactor);
+    }
+        
         float3 sun = getSun(rayDir);
         return totalLuminance + sun;
     }

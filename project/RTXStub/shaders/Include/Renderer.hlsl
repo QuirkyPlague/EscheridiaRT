@@ -105,25 +105,25 @@
         
         //float3 finalColor = skyScattering1(rayState.rayDesc.Direction);
         
-        float3 sunDir =  getDirectionToSun();
-        float3 moonDir = -sunDir;
+        float3 sunDir =  getTrueDirectionToSun();
+        float3 moonDir = getTrueDirectionToMoon();
 
         float sunFade = saturate(sunDir.y);
         float moonFade = saturate(moonDir.y);
 
-        float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
+        float3 mainLightDir = sunDir;
 
         float4 sunColor = getSunColor(float4(0.xxxx));
         float sunIntensity = 0;
-        const float intensity[8] = {
-            4 * 0.5,
-            4 * 0.4,
-            4 * 0.34,
+          const float intensity[8] = {
+            4 * 0.3,
+            4 * 0.23,
+            4 * 0.23,
             2 * 0.2,
-            5 * 0.03,
-            8 * 0.015,
-            8 * 0.0065,
-            2 * 0.0035
+            5 * 0.07,
+            8 * 0.045,
+            8 * 0.08,
+            2 * 0.25
         };
 
         const float times[8] = {
@@ -141,7 +141,7 @@
 
         float timediff = clamp(g_view.skyTextureW - 0.491301561, 0, 0.0253534615);
         timediff *= 1.0 / 0.0253534615;
-        sunIntensity = 2 * 0.0035;
+       sunIntensity = 2 * 0.25;
     
         [unroll] for (int i = 1; i < 8; i++) {
             if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i]) {
@@ -161,7 +161,7 @@
                     rayState.rayDesc.Direction,
                     mainLightDir,
                     sunIntensity,
-                    rng);
+                    rng,true);
         
         
         rayState.color += rayState.throughput * finalColor;
@@ -852,8 +852,7 @@
                 fogDistance,
                 i);
 
-                
-                
+              
                 
             }
             else
@@ -874,6 +873,7 @@
                 rayState.throughput /= p;
 
             }
+
 
             // Terminate rays that can't contribute anymore.
             if (all(rayState.throughput == 0))
@@ -897,6 +897,56 @@
         //RenderSky(rayState);
         
         
+             float distanceFade =  smoothstep(0.0, 1.0, mad(rayState.distance, g_view.distanceFadeScaleBias.x, g_view.distanceFadeScaleBias.y));
+       
+
+         float4 sunColor = getSunColor(float4(0.xxxx));
+        float sunIntensity = 0;
+          const float intensity[8] = {
+            4 * 0.3,
+            4 * 0.23,
+            4 * 0.23,
+            2 * 0.2,
+            5 * 0.07,
+            8 * 0.045,
+            8 * 0.08,
+            2 * 0.25
+        };
+
+        const float times[8] = {
+            0.0000000000, // 6000
+            0.1920399368, // 3000
+            0.3466664553, // 1000
+            0.4309642911, // 0
+            0.4746705294, // 23500
+            0.491301561, // 23000
+            0.502156132, // 23000
+            0.5303186402
+        };
+
+    
+        [unroll] for (int i = 1; i < 8; i++) {
+            if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i]) {
+                float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
+                sunIntensity = lerp(intensity[i - 1], intensity[i], w);
+
+                break;
+            }
+        }
+
+        float3 sunDirection = getTrueDirectionToSun();
+        sunIntensity = inEnd ? 1.2 : sunIntensity;
+         mainLightDir = inEnd ? END_SUN_DIRECTION : sunDirection;
+                // The atmosphere function adds the planet radius internally; pass the
+                // existing 1000-meter offset converted to kilometers.
+                float3 rayOriginKm = float3(0.0f, 1000.0f, 0.0f) * 0.001f;
+                float3 skyColor = RenderHillaireAtmosphereLUTless(
+                    rayOriginKm,
+                    rayDesc.Direction,
+                    mainLightDir,
+                    sunIntensity,
+                    rng, false);
+                    rayState.color = lerp(rayState.color, skyColor , distanceFade);
 
         //rayState.color = rayMarchFog(rayDesc.Origin, rayDesc.Direction,rayState.color, fogDistance, pixelPos);
         return rayState.color;

@@ -73,7 +73,7 @@
 #define RAIN_SUN_INTENSITY_MULTIPLIER 0.045
 #define RAIN_BLOOM_BOOST 2.6
 #define CLOUD_SHADOW_OPACITY 0.616
-#define ENABLE_SUNLIGHT 1
+#define ENABLE_SUNLIGHT 0
 
 //Allows reading of resource pack fog values to determine shadow opacity
 #define DO_RP_CLOUD_OPACITY 0
@@ -89,7 +89,7 @@
 #define USE_ACCURATE_DIFFUSE_BRDF 1
 static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define VL_FOG_STEPS 16
-#define MAX_FOG_DISTANCE  300
+#define MAX_FOG_DISTANCE  128
 
 // Vertical bounds of the path-traced fog layer in world space.
 #define PATH_TRACED_FOG_BOTTOM_Y 32.0
@@ -142,14 +142,15 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define END_HORIZON_BLEND 11.5
 #define END_GROUND_BLEND 0.85
 
-
+#define FOG_FADE_START 32
+#define FOG_FADE_END 286
 //sky intensity multipliers
-#define RAYLEIGH_MULT                  73.55 //brightness of the sky
-#define SKY_MIE_SCATTERING_STRENGTH    50.0   // atmospheric Mie brightness multiplier
-#define SKY_MIE_FORWARD_G              0.85  // higher values make the Mie lobe more forward-scattering
+#define RAYLEIGH_MULT                  100.55 //brightness of the sky
+#define SKY_MIE_SCATTERING_STRENGTH    32.0   // atmospheric Mie brightness multiplier
+#define SKY_MIE_FORWARD_G              0.82  // higher values make the Mie lobe more forward-scattering
 #define SKY_HORIZON_STRENGTH           1.55  // additional broad glow centered on the horizon
 #define SKY_HORIZON_WIDTH              5.0  // larger values make the horizon band narrower
-#define SKY_SATURATION                 1.18  // 1.0 is unchanged
+#define SKY_SATURATION                 1.38  // 1.0 is unchanged
 #define NIGHT_INTENSITY                0.02 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
@@ -193,7 +194,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define WAVE_FADE_END   750.0
 
 #define WAVE_SMOOTHING                                      (0.0513)
-#define WAVE_INTENSITY                                      (0.0352)
+#define WAVE_INTENSITY                                      (0.0652)
 #define WAVE_FREQUENCY                                      (1.24)
 #define WAVE_OCTAVES                                        (21)
 #define WAVE_SPEED                                          (3.0)
