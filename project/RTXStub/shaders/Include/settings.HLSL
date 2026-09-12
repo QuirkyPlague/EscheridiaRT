@@ -65,15 +65,15 @@
 // If radius is made larger sun is more intense
 // Recommended to reduce sunlight intensity if increased
 #define SUN_RADIUS   0.00465f 
-#define SUN_DISC_RADIUS 0.00465f
+#define SUN_DISC_RADIUS 0.00865f
 #define SUN_DISC_EDGE_SOFTNESS 0.08f
 #define SUN_DISC_LIMB_DARKENING 0.6f
 #define SUN_DISC_INTENSITY 50.0f
-#define SUN_INTENSITY 0.815
+#define SUN_INTENSITY 1.0
 #define RAIN_SUN_INTENSITY_MULTIPLIER 0.045
 #define RAIN_BLOOM_BOOST 2.6
 #define CLOUD_SHADOW_OPACITY 0.616
-#define ENABLE_SUNLIGHT 0
+#define ENABLE_SUNLIGHT 1
 
 //Allows reading of resource pack fog values to determine shadow opacity
 #define DO_RP_CLOUD_OPACITY 0
@@ -81,7 +81,9 @@
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
 #define POINT_LIGHT_SHADOW_RADIUS 0.0425
-#define EMISSION_STENGTH  225
+#define EMISSION_STENGTH  450
+
+#define DRAINE_ALPHA 0.5
 
 // Deterimines whether or not the diffuse BRDF should use the accurate or fast calutlation
 // 0 = fast     (Less accurate but higher performing)
@@ -145,12 +147,12 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define FOG_FADE_START 32
 #define FOG_FADE_END 286
 //sky intensity multipliers
-#define RAYLEIGH_MULT                  100.55 //brightness of the sky
-#define SKY_MIE_SCATTERING_STRENGTH    32.0   // atmospheric Mie brightness multiplier
+#define RAYLEIGH_MULT                  45.55 //brightness of the sky
+#define SKY_MIE_SCATTERING_STRENGTH    12.0   // atmospheric Mie brightness multiplier
 #define SKY_MIE_FORWARD_G              0.82  // higher values make the Mie lobe more forward-scattering
 #define SKY_HORIZON_STRENGTH           1.55  // additional broad glow centered on the horizon
 #define SKY_HORIZON_WIDTH              5.0  // larger values make the horizon band narrower
-#define SKY_SATURATION                 1.38  // 1.0 is unchanged
+#define SKY_SATURATION                 1.0  // 1.0 is unchanged
 #define NIGHT_INTENSITY                0.02 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
 
@@ -208,5 +210,5 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define WAVE_HEIGHT  0.5
 
 #define AGX_MIN_EV -16.4561
-#define AGX_MAX_EV 5.65
+#define AGX_MAX_EV 4.65
 #endif // SETTINGS_HLSL

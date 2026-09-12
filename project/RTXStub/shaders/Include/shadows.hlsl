@@ -39,10 +39,7 @@ struct shadowPayload {
 void TraceShadowRay(in RayDesc ray, out shadowPayload payload) { 
     RayQuery<RAY_FLAG_NONE> q; 
     const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_PRIMARY | INSTANCE_MASK_ALPHA_BLEND_PRIMARY | INSTANCE_MASK_WATER; 
-    
-    // CRITICAL: Removed RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH.
-    // We need the query to traverse through overlapping transparent surfaces.
-    q.TraceRayInline(SceneBVH, RAY_FLAG_NONE, INSTANCE_MASK_SHADOW, ray); 
+    q.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, INSTANCE_MASK_SHADOW, ray); 
     
     float3 transmission = 1.0f.xxx; 
     

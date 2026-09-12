@@ -320,39 +320,134 @@ float SampleHeightFogDistance(
         (4.0 * PI * pow(max(denom, 1e-6), 1.5));
     }
 
-    // Builds a sample around the HG phase 
-    // Ngl if you want realism HG Draine is probably better
-    // Although, ive mainly seen that for clouds
-    float3 SampleHG(float3 forward,float g,float2 xi,out float pdf)
-    {
-        float cosTheta;
+    float PhaseDraine(float cosTheta, float g, float alpha)
+{
+    float g2 = g * g;
+    float denom = 1.0 + g2 - 2.0 * g * cosTheta;
 
+    float normalization =
+        1.0 + alpha * (1.0 + 2.0 * g2) / 3.0;
+
+    return
+        (1.0 - g2) * (1.0 + alpha * cosTheta * cosTheta) /
+        (4.0 * PI * normalization *
+         pow(max(denom, 1e-6), 1.5));
+}
+
+
+    float3 SampleDraine(
+    float3 forward,
+    float g,
+    float alpha,
+    float2 xi,
+    PathRNG rng,
+    out float pdf)
+{
+    forward = normalize(forward);
+
+    float cosTheta = 0.0;
+
+    alpha = max(alpha, 0.0);
+
+    for (int i = 0; i < 16; i++)
+    {
+        float2 sampleXi = (i == 0) ? xi : NextFloat2(rng);
+
+        // Sample HG
         if (abs(g) < 1e-3)
         {
-            cosTheta = 1.0 - 2.0 * xi.x;
+            cosTheta = 1.0 - 2.0 * sampleXi.x;
         }
         else
         {
-            float s = (1.0 - g * g) /
-            (1.0 - g + 2.0 * g * xi.x);
+            float s =
+                (1.0 - g * g) /
+                (1.0 - g + 2.0 * g * sampleXi.x);
 
-            cosTheta = (1.0 + g * g - s * s) / (2.0 * g);
+            cosTheta =
+                (1.0 + g * g - s * s) /
+                (2.0 * g);
         }
 
-        float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
-        float phi = 2.0 * PI * xi.y;
+        cosTheta = clamp(cosTheta, -1.0, 1.0);
 
-        float3 tangent, bitangent;
-        buildOrthonormalBasis(normalize(forward), tangent, bitangent);
+        // Draine correction / rejection probability
+        float acceptance =
+            (1.0 + alpha * cosTheta * cosTheta) /
+            (1.0 + alpha);
 
-        float3 nextDirection =
-        tangent   * (cos(phi) * sinTheta) +
-        bitangent * (sin(phi) * sinTheta) +
-        forward   * cosTheta;
+        if (NextFloat(rng) <= acceptance)
+        {
+            float sinTheta =
+                sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
 
-        pdf = PhaseHG(cosTheta, g);
-        return normalize(nextDirection);
+            float phi =
+                2.0 * PI * sampleXi.y;
+
+            float3 tangent;
+            float3 bitangent;
+
+            buildOrthonormalBasis(
+                forward,
+                tangent,
+                bitangent);
+
+            float3 nextDirection =
+                tangent * (cos(phi) * sinTheta) +
+                bitangent * (sin(phi) * sinTheta) +
+                forward * cosTheta;
+
+            nextDirection = normalize(nextDirection);
+
+            pdf = PhaseDraine(cosTheta, g, alpha);
+
+            return nextDirection;
+        }
     }
+
+    // Fallback: use the supplied xi as an HG sample.
+    if (abs(g) < 1e-3)
+    {
+        cosTheta = 1.0 - 2.0 * xi.x;
+    }
+    else
+    {
+        float s =
+            (1.0 - g * g) /
+            (1.0 - g + 2.0 * g * xi.x);
+
+        cosTheta =
+            (1.0 + g * g - s * s) /
+            (2.0 * g);
+    }
+
+    cosTheta = clamp(cosTheta, -1.0, 1.0);
+
+    float sinTheta =
+        sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+
+    float phi = 2.0 * PI * xi.y;
+
+    float3 tangent;
+    float3 bitangent;
+
+    buildOrthonormalBasis(
+        forward,
+        tangent,
+        bitangent);
+
+    float3 nextDirection =
+        tangent * (cos(phi) * sinTheta) +
+        bitangent * (sin(phi) * sinTheta) +
+        forward * cosTheta;
+
+    nextDirection = normalize(nextDirection);
+
+    pdf = PhaseDraine(cosTheta, g, alpha);
+
+    return nextDirection;
+}
+
     float3 SampleUniformSphere(float2 xi)
     {
         float z = 1.0 - 2.0 * xi.x;

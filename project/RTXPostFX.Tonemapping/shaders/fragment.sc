@@ -22,7 +22,7 @@ $input v_texcoord0
 // Bloom strength
 
 
-#define BLOOM_MULTIPLIER 2.5
+#define BLOOM_MULTIPLIER 3.5
 
 
 uniform vec4 gToneMappingDebugMode;

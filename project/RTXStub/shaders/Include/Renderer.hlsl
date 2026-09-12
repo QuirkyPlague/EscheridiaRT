@@ -115,15 +115,15 @@
 
         float4 sunColor = getSunColor(float4(0.xxxx));
         float sunIntensity = 0;
-          const float intensity[8] = {
-            4 * 0.3,
-            4 * 0.23,
-            4 * 0.23,
-            2 * 0.2,
-            5 * 0.07,
+        const float intensity[8] = {
+            4 * 0.6,
+            4 * 0.4,
+            4 * 0.4,
+            4 * 0.2,
+            3 * 0.25,
             8 * 0.045,
-            8 * 0.08,
-            2 * 0.25
+            8 * 0.07,
+            2 * 0.085
         };
 
         const float times[8] = {
@@ -141,8 +141,8 @@
 
         float timediff = clamp(g_view.skyTextureW - 0.491301561, 0, 0.0253534615);
         timediff *= 1.0 / 0.0253534615;
-       sunIntensity = 2 * 0.25;
-    
+        sunIntensity = 2 * 0.085;
+        
         [unroll] for (int i = 1; i < 8; i++) {
             if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i]) {
                 float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
@@ -152,16 +152,16 @@
             }
         }
         sunIntensity = inEnd ? 1.2 : sunIntensity;
-         mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
-                // The atmosphere function adds the planet radius internally; pass the
-                // existing 1000-meter offset converted to kilometers.
-                float3 rayOriginKm = float3(0.0f, 1000.0f, 0.0f) * 0.001f;
-                float3 finalColor = RenderHillaireAtmosphereLUTless(
-                    rayOriginKm,
-                    rayState.rayDesc.Direction,
-                    mainLightDir,
-                    sunIntensity,
-                    rng,true);
+        mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
+        // The atmosphere function adds the planet radius internally; pass the
+        // existing 1000-meter offset converted to kilometers.
+        float3 rayOriginKm = float3(0.0f, 1000.0f, 0.0f) * 0.001f;
+        float3 finalColor = RenderHillaireAtmosphereLUTless(
+        rayOriginKm,
+        rayState.rayDesc.Direction,
+        mainLightDir,
+        sunIntensity,
+        rng,true);
         
         
         rayState.color += rayState.throughput * finalColor;
@@ -661,53 +661,115 @@
                 HitInfo hitInfo = GetCommittedHitInfo(q);
                 surface = hitInfo.rayT;
             }
-            float volumeExit = min(rayDesc.TMax, MAX_FOG_DISTANCE);
-            float tEnd = min(surface, volumeExit);
+            
 
+            float atmosphereT0;
+            float atmosphereT1;
+
+            float volumeStart = rayState.rayDesc.TMin;
+            float volumeExit = rayState.rayDesc.TMax;
+
+            float ATMOSPHERE_RADIUS = 6420.0f;
+
+            if (RaySphereIntersect(
+            rayState.rayDesc.Origin,
+            rayState.rayDesc.Direction,
+            ATMOSPHERE_RADIUS,
+            atmosphereT0,
+            atmosphereT1))
+            {
+                volumeStart = max(volumeStart, atmosphereT0);
+                volumeExit = min(volumeExit, atmosphereT1);
+            }
+            else
+            {
+                volumeStart = volumeExit;
+            }
+
+            float tEnd = min(surface, volumeExit);
             // Construct the homogenous medium
             // https://la.disneyresearch.com/wp-content/uploads/Monte-Carlo-Methods-for-Volumetric-Light-Transport-Simulation-Paper.pdf
+            // Construct the homogenous medium
+
             float3 sigmaS3;
-            #if OVERRIDE_END_FOG_SCATTERING 
+
+            #if OVERRIDE_END_FOG_SCATTERING
                 sigmaS3 = END_FOG_SCATTERING_COLOR * END_FOG_SCATTERING_INTENSITY;
             #else
                 sigmaS3 = getScattering();
             #endif
-            float3 sigmaT3 = inEnd ? getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY : getMediaPrimaryExtinction();
-            
-            sigmaT3 = lerp(sigmaT3, float3(0.0125,0.0125,0.0125), getBiomeAdjustedRainLevel());
-            
 
-            float sigmaT =max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z));
+            float3 sigmaT3 =
+            inEnd ?
+            getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY :
+            getMediaPrimaryExtinction();
 
-            sigmaT = max(sigmaT, 1e-6);
+            sigmaT3 = lerp(
+            sigmaT3,
+            float3(0.0125, 0.0125, 0.0125),
+            getBiomeAdjustedRainLevel());
 
-            float dither = NextFloat(rng);
+            // Majorant for delta tracking.
+           float medium = tEnd;
+float densityModifier = 0.0f;
+bool mediumScattered = false;
 
-            float medium =
-            SampleHeightFogDistance(
-            rayState.rayDesc.Origin,
-            rayState.rayDesc.Direction,
-            tEnd,
-            sigmaT,
-            dither);
-            
+if (volumeStart < tEnd)
+{
+    float majorant =
+        max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z));
+
+    majorant = max(majorant, 1e-6f);
+
+    float t = volumeStart;
+
+    while (true)
+    {
+        float xi = max(NextFloat(rng), 1e-6f);
+
+        t += -log(xi) / majorant;
+
+        if (t >= tEnd)
+            break;
+
+        float3 candidatePos =
+            rayState.rayDesc.Origin +
+            rayState.rayDesc.Direction * t;
+
+        densityModifier = calcDensityModifier(candidatePos);
+
+        float3 localSigmaT3 =
+            sigmaT3 * densityModifier;
+
+        float localSigmaT =
+            max(localSigmaT3.x,
+                max(localSigmaT3.y, localSigmaT3.z));
+
+        if (NextFloat(rng) < localSigmaT / majorant)
+        {
+            medium = t;
+            mediumScattered = true;
+            break;
+        }
+    }
+}
+
             float3 totalScatter = 0.0;
-            float targetOpticalDepth = -log(max(1.0 - dither, 1e-6));
-            
-            if (medium < tEnd)
+
+            if (mediumScattered)
             {
-                float3 scatterPos = rayState.rayDesc.Origin + rayState.rayDesc.Direction * medium;
-                
-                float densityModifier =
-                calcDensityModifier(scatterPos);
+                float3 scatterPos =
+                rayState.rayDesc.Origin +
+                rayState.rayDesc.Direction * medium;
 
                 float3 sigmaS =
                 sigmaS3 * densityModifier;
 
                 float3 sigmaT =
                 sigmaT3 * densityModifier;
-                
-                float3 scatterWeight = sigmaS / max(sigmaT, 1e-6);
+
+                float3 scatterWeight =
+                sigmaS / max(sigmaT, 1e-6);
 
                 float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 650 * SUN_INTENSITY; 
                 sunlightColor.rgb *= sunlightColor.a;
@@ -726,7 +788,7 @@
                 shadowRay.Direction = randConeJitter(mainLightDir, sunRadius, NextFloat2(rng)); 
                 shadowRay.Origin = offset_ray(scatterPos, shadowRay.Direction); 
                 shadowRay.TMin = 0.0; 
-                shadowRay.TMax = MAX_FOG_DISTANCE; 
+                shadowRay.TMax = 1000; 
                 TraceShadowRay(shadowRay, payload); 
 
                 float3 twinSunContribution = 0;
@@ -748,11 +810,11 @@
                             shadowRay.Direction = randConeJitter(endTwinSunDir, sunRadius, NextFloat2(rng)); 
                             shadowRay.Origin = offset_ray(scatterPos, shadowRay.Direction); 
                             shadowRay.TMin = 0.0; 
-                            shadowRay.TMax = MAX_FOG_DISTANCE; 
+                            shadowRay.TMax = 1000; 
                             TraceShadowRay(shadowRay, payload); 
                             float VdotL = dot(rayState.rayDesc.Direction, shadowRay.Direction);
                             float g =  0.61; // Forward-scattering fog.
-                            float sunPhase = PhaseHG(VdotL, g);
+                            float sunPhase = PhaseDraine(VdotL, g, DRAINE_ALPHA); 
                             twinSunContribution = rayState.throughput *scatterWeight *sunContribution *payload.transmission * sunPhase;
                             
                         }
@@ -763,48 +825,9 @@
                 float VdotL = dot(rayState.rayDesc.Direction, shadowRay.Direction);
                 float g = inEnd ? END_FOG_ANISOTROPY : 0.735; // Forward-scattering fog.
                 float ambientG = inEnd ? END_FOG_INDIRECT_ANISOTROPY : 0.635;
-                float sunPhase = inWater ? waterPhase(VdotL) : PhaseHG(VdotL, g);
+                float sunPhase = inWater ? waterPhase(VdotL) : PhaseDraine(VdotL, g, DRAINE_ALPHA);
 
-                float3 explicitLightContribution = 0.0;
-                if ( g_view.cpuLightsCount > 0)
-                {
-                    uint lightCount = min(g_view.cpuLightsCount, 98304u);
-                    uint lightIndex = min(uint(NextFloat(rng) * lightCount), lightCount - 1u);
-                    LightInfo lightInfo = inputLightsBuffer[lightIndex];
-                    LightData lightData = UnpackLight(lightInfo.packedData);
-
-                    float3 toLight = lightInfo.position - scatterPos;
-                    float lightDistanceSquared = dot(toLight, toLight);
-                    float lightDistance = sqrt(max(lightDistanceSquared, 1e-6));
-                    float3 lightDirection = toLight / lightDistance;
-                    float lightPhase = inWater ?
-                    waterPhase(dot(rayState.rayDesc.Direction, lightDirection)) :
-                    PhaseHG(dot(rayState.rayDesc.Direction, lightDirection), g);
-
-                    RayDesc lightShadowRay;
-                    float3 lightShadowTransmission = 0.0;
-                    float lightShadowRadius = lightData.isLarge ? POINT_LIGHT_SHADOW_RADIUS : 0.0;
-                    for (int shadowSample = 0; shadowSample < POINT_LIGHT_SHADOW_SAMPLES; shadowSample++)
-                    {
-                        lightShadowRay.Origin = scatterPos + 1.0e-4 * lightDirection;
-                        lightShadowRay.Direction = randConeJitter(
-                        lightDirection,
-                        lightShadowRadius,
-                        NextFloat2(rng));
-                        lightShadowRay.TMin = 0.0;
-                        lightShadowRay.TMax = max(lightDistance - 0.55, 0.0);
-
-                        shadowPayload lightShadow;
-                        TraceShadowRay(lightShadowRay, lightShadow);
-                        lightShadowTransmission += lightShadow.transmission;
-                    }
-                    lightShadowTransmission /= float(POINT_LIGHT_SHADOW_SAMPLES);
-
-                    explicitLightContribution = lightData.color * lightData.intensity;
-                    explicitLightContribution *= lightPhase * lightShadowTransmission;
-                    explicitLightContribution /= max(lightDistanceSquared, 1e-4);
-                    explicitLightContribution *= float(lightCount);
-                }
+                
                 
                 #if ENABLE_SUNLIGHT == 0
                     sunContribution = 0;
@@ -814,26 +837,45 @@
                 
 
                 float3 directScatter = rayState.throughput * scatterWeight *
-                (sunContribution * payload.transmission * sunPhase +
-                explicitLightContribution + twinSunContribution);
+                (sunContribution * payload.transmission * sunPhase + twinSunContribution);
                 
 
                 rayState.color += directScatter;
                 float phasePdf;
-                float3 nextDirection = SampleHG(
+                float3 nextDirection = SampleDraine(
                 rayState.rayDesc.Direction,
                 ambientG,
+                DRAINE_ALPHA,
                 NextFloat2(rng),
+                rng,
                 phasePdf);
-                float sampledPhase = PhaseHG(
+
+                float sampledPhase = PhaseDraine(
                 dot(rayState.rayDesc.Direction, nextDirection),
-                ambientG);
+                ambientG,
+                DRAINE_ALPHA);
 
                 rayState.throughput *= scatterWeight * (sampledPhase / max(phasePdf, 1e-6));
                 
                 
                 rayState.rayDesc.Direction = nextDirection;
                 rayState.rayDesc.Origin = offset_ray(scatterPos, rayState.rayDesc.Direction);
+
+                float throughputMax = max(
+                rayState.throughput.x,
+                max(rayState.throughput.y, rayState.throughput.z)
+                );
+
+                if (throughputMax < 0.01)
+                {
+                    float survive = saturate(throughputMax / 0.1);
+
+                    if (NextFloat(rng) > survive)
+                    break;
+
+                    rayState.throughput /= survive;
+                }
+
 
             }
             else if (hitSurface)
@@ -852,7 +894,7 @@
                 fogDistance,
                 i);
 
-              
+                
                 
             }
             else
@@ -897,56 +939,7 @@
         //RenderSky(rayState);
         
         
-             float distanceFade =  smoothstep(0.0, 1.0, mad(rayState.distance, g_view.distanceFadeScaleBias.x, g_view.distanceFadeScaleBias.y));
-       
-
-         float4 sunColor = getSunColor(float4(0.xxxx));
-        float sunIntensity = 0;
-          const float intensity[8] = {
-            4 * 0.3,
-            4 * 0.23,
-            4 * 0.23,
-            2 * 0.2,
-            5 * 0.07,
-            8 * 0.045,
-            8 * 0.08,
-            2 * 0.25
-        };
-
-        const float times[8] = {
-            0.0000000000, // 6000
-            0.1920399368, // 3000
-            0.3466664553, // 1000
-            0.4309642911, // 0
-            0.4746705294, // 23500
-            0.491301561, // 23000
-            0.502156132, // 23000
-            0.5303186402
-        };
-
-    
-        [unroll] for (int i = 1; i < 8; i++) {
-            if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i]) {
-                float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
-                sunIntensity = lerp(intensity[i - 1], intensity[i], w);
-
-                break;
-            }
-        }
-
-        float3 sunDirection = getTrueDirectionToSun();
-        sunIntensity = inEnd ? 1.2 : sunIntensity;
-         mainLightDir = inEnd ? END_SUN_DIRECTION : sunDirection;
-                // The atmosphere function adds the planet radius internally; pass the
-                // existing 1000-meter offset converted to kilometers.
-                float3 rayOriginKm = float3(0.0f, 1000.0f, 0.0f) * 0.001f;
-                float3 skyColor = RenderHillaireAtmosphereLUTless(
-                    rayOriginKm,
-                    rayDesc.Direction,
-                    mainLightDir,
-                    sunIntensity,
-                    rng, false);
-                    rayState.color = lerp(rayState.color, skyColor , distanceFade);
+        
 
         //rayState.color = rayMarchFog(rayDesc.Origin, rayDesc.Direction,rayState.color, fogDistance, pixelPos);
         return rayState.color;
