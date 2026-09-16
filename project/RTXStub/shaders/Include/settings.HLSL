@@ -4,7 +4,7 @@
 
 #define DO_SAMPLE_LIMITS 0
 #define MAX_ACCUMULATED_SAMPLES 256
-#define MAX_BOUNCES 8
+#define MAX_BOUNCES 6
 
 // White furnace test
 #define WHITE_FURNACE 0
@@ -27,7 +27,7 @@
 
 // This disables objects that are not raytraced (sign text, particles stars). This will disable the menu panorama 
 // Use this if you want those to not appear in front of DOF for renders
-#define DISABLE_RASTER_OBJECTS 1
+#define DISABLE_RASTER_OBJECTS 0
 
 // Lighting Parameters
 #define SUN_AZIMUTH               (0.741)                   // Vanilla: 0.0
@@ -43,7 +43,7 @@
 // 0.0-5.0 = close range shots
 // 6.0 - 15.0 midrange shot
 // 16.0+ = long range shot
-#define DOF_FOCAL_DISTANCE 11.25f
+#define DOF_FOCAL_DISTANCE 14.25f
 
 
 // Blur does not scale with focal distance
@@ -69,9 +69,10 @@
 #define SUN_DISC_EDGE_SOFTNESS 0.08f
 #define SUN_DISC_LIMB_DARKENING 0.6f
 #define SUN_DISC_INTENSITY 50.0f
-#define SUN_INTENSITY 1.0
+#define SUN_INTENSITY 0.885
 #define RAIN_SUN_INTENSITY_MULTIPLIER 0.045
 #define RAIN_BLOOM_BOOST 2.6
+#define COMPUTE_BLOOM_STRENGTH 0.175f
 #define CLOUD_SHADOW_OPACITY 0.616
 #define ENABLE_SUNLIGHT 1
 
@@ -81,9 +82,9 @@
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
 #define POINT_LIGHT_SHADOW_RADIUS 0.0425
-#define EMISSION_STENGTH  450
+#define EMISSION_STENGTH  200
 
-#define DRAINE_ALPHA 0.5
+#define DRAINE_ALPHA 1.15
 
 // Deterimines whether or not the diffuse BRDF should use the accurate or fast calutlation
 // 0 = fast     (Less accurate but higher performing)
@@ -93,9 +94,8 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define VL_FOG_STEPS 16
 #define MAX_FOG_DISTANCE  128
 
-// Vertical bounds of the path-traced fog layer in world space.
-#define PATH_TRACED_FOG_BOTTOM_Y 32.0
-#define PATH_TRACED_FOG_TOP_Y 96.0
+#define DO_RAIN_WETNESS 1
+#define RAIN_NORMAL_REDUCTION 0.45
 
 //Sun colors alpha stores intensity
 #define DAY_SUN_COLOR float4(1.0,0.7925,0.415, 1.0)
@@ -193,7 +193,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 
 
 #define WAVE_FADE_START 24.0
-#define WAVE_FADE_END   750.0
+#define WAVE_FADE_END   365.0
 
 #define WAVE_SMOOTHING                                      (0.0513)
 #define WAVE_INTENSITY                                      (0.0652)

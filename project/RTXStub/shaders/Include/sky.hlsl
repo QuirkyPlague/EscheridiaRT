@@ -567,8 +567,9 @@
     static const float  H_RAYLEIGH   = 8.0f;
     static const float  H_MIE        = 1.2f;
 
-    static const float3 BETA_RAYLEIGH = float3(3.202f, 11.558f, 33.100f) * 1e-3f;
+    static const float3 BETA_RAYLEIGH = float3(4.202f, 14.558f, 27.100f) * 1e-3f;
     static const float3 END_RAYLEIGH = float3(4.32f, 0.931f, 9.56f) * 1e-4f;
+    static const float3 RAIN_RAYLEIGH = float3(17.202f, 17.558f, 17.900f) * 1e-3f;
 
     static const float  BETA_MIE_S    = 45.996f * 1e-3f;
     static const float  BETA_MIE_E    = 8.440f * 1e-3f;
@@ -589,7 +590,7 @@ float sampleMieDensity(float altitude) {
     return exp(-max(altitude, 0.0f) / max(H_MIE, 1e-4f));
 }
 
-static const float3 RAYLEIGH_SCATTERING_BASE = BETA_RAYLEIGH;
+static float3 RAYLEIGH_SCATTERING_BASE = lerp(BETA_RAYLEIGH, RAIN_RAYLEIGH, getBiomeAdjustedRainLevel());
 
 // Calculate the air density ratio at a given height (km) relative to sea level.
 // Fitted to U.S. Standard Atmosphere 1976. The coefficients are valid for km-scaled heights.
@@ -722,7 +723,7 @@ float sampleOzoneDensity(float altitude) {
     {
         if (rayDir.y <= 0.0f || nightFactor <= 0.0f) return 0.0f;
 
-        const float STAR_LONGITUDE_CELLS = 756.0f;
+        const float STAR_LONGITUDE_CELLS = 512.0f;
         const float STAR_LATITUDE_CELLS = 256.0f;
         float3 dir = normalize(rayDir);
         float2 sphericalUv = float2(
@@ -740,9 +741,9 @@ float sampleOzoneDensity(float altitude) {
             HashToFloat(PCG_Hash(uint3(seed, 0x13u, 0x71u))) - 0.5f,
             HashToFloat(PCG_Hash(uint3(seed, 0x37u, 0xB3u))) - 0.5f);
         float distanceFromStar = length(cellUv - starOffset);
-        float size = lerp(0.022f, 0.105f, HashToFloat(PCG_Hash(uint3(seed, 0x55u, 0x91u))));
+        float size = lerp(0.012f, 0.095f, HashToFloat(PCG_Hash(uint3(seed, 0x55u, 0x91u))));
         float star = 1.0f - smoothstep(size * 0.3f, size, distanceFromStar);
-        float brightness = lerp(4.65f, 15.2f, HashToFloat(PCG_Hash(uint3(seed, 0xA1u, 0xC7u))));
+        float brightness = lerp(0.15f, 1.6f, HashToFloat(PCG_Hash(uint3(seed, 0xA1u, 0xC7u))));
         float colorMix = HashToFloat(PCG_Hash(uint3(seed, 0xD3u, 0xE9u)));
         float3 starColor = colorMix < 0.5f
             ? lerp(float3(1.0f, 0.78f, 0.58f), float3(1.0f, 0.95f, 0.82f), colorMix * 2.0f)
@@ -807,7 +808,7 @@ float sampleOzoneDensity(float altitude) {
         float3 totalLuminance = float3(0, 0, 0);
         float3 throughput = float3(1, 1, 1);
         
-        float3 rayleighColor = inEnd ? END_RAYLEIGH : BETA_RAYLEIGH;
+        float3 rayleighColor = inEnd ? END_RAYLEIGH : RAYLEIGH_SCATTERING_BASE;
         float3 mieCoeff = GetAtmosphereMieCoefficients(2.0f);
 
         float cosTheta = dot(rayDir, sunDir);
@@ -852,7 +853,7 @@ float sampleOzoneDensity(float altitude) {
                 // Smooth the horizon-to-ground transition instead of cutting the ray off sharply.
                 // The transition happens over a broader radius band so the atmosphere fades gently
                 // as the ray crosses beneath the local horizon.
-                float horizonThicknessKm = 5.0f;
+                float horizonThicknessKm = 2.0f;
                 float horizonBand = saturate((rayCenterDist - (EARTH_RADIUS - horizonThicknessKm)) / horizonThicknessKm);
                 float softGroundMask = smoothstep(0.0f, 1.0f, horizonBand);
                 shadowFactor = lerp(0.08f, 1.0f, softGroundMask);
@@ -886,6 +887,7 @@ float sampleOzoneDensity(float altitude) {
         float nightFactor = smoothstep(0.12f, -0.08f, trueSunDir.y);
         totalLuminance += ProceduralStars(rayDir, nightFactor);
     }
+
 
         // Fade the sun itself by the atmosphere transmittance so it naturally blends out
         // as the sun sinks toward the horizon instead of remaining a flat bright disc.

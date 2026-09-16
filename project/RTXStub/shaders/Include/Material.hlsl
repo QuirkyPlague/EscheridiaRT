@@ -557,8 +557,10 @@ SurfaceInfo MaterialVanilla(HitInfo hitInfo, GeometryInfo geometryInfo, ObjectIn
 
     // Invert back facing normals.
     //if (!hitInfo.frontFacing) surfaceInfo.normal = -surfaceInfo.normal;
-
+    // small albedo reduction to avoid overly bright surfaces
+    color.rgb *= 0.9;
     surfaceInfo.color = color.rgb;
+    
     surfaceInfo.color = pow(surfaceInfo.color, 2.2);
     surfaceInfo.alpha = color.a;
 
