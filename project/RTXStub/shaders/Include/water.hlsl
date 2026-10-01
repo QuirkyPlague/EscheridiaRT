@@ -54,23 +54,6 @@ float getwaves(float2 position, int iterations) {
   return sumOfValues / sumOfWeights;
 }
 
-float raymarchwater(float3 camera, float3 start, float3 end, float depth) {
-  float3 pos = start;
-  float3 dir = normalize(end - start);
-  for(int i=0; i < 12; i++) {
-    // the height is from 0 to -depth
-    float height = getwaves(pos.xz, WAVE_OCTAVES) * depth - depth;
-    // if the waves height almost nearly matches the ray height, assume its a hit and return the hit distance
-    if(height + 0.01 > pos.y) {
-      return distance(pos, camera);
-    }
-    // iterate forwards according to the height mismatch
-    pos += dir * (pos.y - height);
-  }
-  // if hit was not registered, just assume hit the top layer, 
-  // this makes the raymarching faster and looks better at higher distances
-  return distance(start, camera);
-}
 
 // Calculate normal at point by calculating the height at pos and 2 additional nearby points
 float3 waveNormal(float2 pos, float e, float depth)
@@ -93,83 +76,62 @@ float3 waveNormal(float2 pos, float e, float depth)
 
 
 
-void EvaluateWaveLayer(
-    float2 origin, float2 dir, float amplitude, float steepness, float wavelength, float speed, float time, 
-    inout float2 guessXZ, inout float3 tangent, inout float3 binormal, inout float totalHeight
-) {
-    float k = (2.0f * 3.14159265f) / wavelength;
-    
-    // Safety check: Scale steepness dynamically to prevent self-intersection loops
-    // Q_max = 1.0 / (amplitude * k)
-    float qMax = 1.0f / max(amplitude * k, 0.0001f);
-    float safeQ = min(steepness, qMax * 0.9f); // Keep it strictly below the loop threshold
-    
-    float c = sqrt(9.81f / k) * speed;
-    
-    // Smooth, calibrated fixed-point inversion loop
-    [unroll]
-    for (int i = 0; i < 3; i++) {
-        float phase = k * (dot(dir, guessXZ) - c * time);
-        guessXZ = origin - (safeQ * amplitude * dir * cos(phase));
+// Simple, deterministic hash function to generate wave attributes procedurally
+float WaveHash(float seed)
+{
+    return frac(sin(seed) * 43758.5453123f);
+}
+
+// Analytically calculates the exact ocean surface normal for any given position and time
+float3 GetAnharmonicWaveNormal(float3 worldPos, float time, uint waveCount)
+{
+    // Initialize the identity matrix derivatives (Tangent and Bitangent)
+    float3 tangent = float3(1.0f, 0.0f, 0.0f);
+    float3 bitangent = float3(0.0f, 0.0f, 1.0f);
+
+    // Accumulate waves using the exact same seed generation across threads
+    for (uint i = 0; i < waveCount; ++i)
+    {
+        // Derive unique wave parameters purely from the loop index 'i'
+        float seed = float(i) * 12.9898f;
+
+        // Pseudo-random angle for wave direction
+        float angle = WaveHash(seed) * 6.2831853f;
+        float2 direction = float2(cos(angle), sin(angle));
+
+        // Procedural distribution of amplitudes, wavelengths, and steepness
+        float amplitude = 0.05f + (WaveHash(seed + 1.0f) * 0.45f) / float(i + 1);
+        float wavelength = 2.0f + WaveHash(seed + 2.0f) * 35.0f * (float(i + 1) / float(waveCount));
+        float speed = 0.5f + WaveHash(seed + 3.0f) * 2.5f;
+        float steepness = 0.1f + WaveHash(seed + 4.0f) * 0.4f;
+
+        // Core Gerstner Wave Constants
+        float k = (2.0f * 3.14159265f) / wavelength;
+        float c = speed * sqrt(9.81f / k); // Deep water dispersion relation
+
+        // Phase calculation based on input position and time
+        float phase = k * dot(direction, worldPos.xz) - c * time;
+
+        float cosPhase = cos(phase);
+        float sinPhase = sin(phase);
+
+        // Sharpness constraint factor to prevent wave self-intersection loops
+        float q = steepness / (amplitude * k * (float)waveCount);
+        float wa = k * amplitude;
+
+        // Analytical Partial Derivatives (Jacobians)
+        tangent.x   -= q * wa * direction.x * direction.x * sinPhase;
+        tangent.y   += wa * direction.x * cosPhase;
+        tangent.z   -= q * wa * direction.x * direction.y * sinPhase;
+
+        bitangent.x -= q * wa * direction.x * direction.y * sinPhase;
+        bitangent.y += wa * direction.y * cosPhase;
+        bitangent.z -= q * wa * direction.y * direction.y * sinPhase;
     }
-    
-    float finalPhase = k * (dot(dir, guessXZ) - c * time);
-    float sinP = sin(finalPhase);
-    float cosP = cos(finalPhase);
-    
-    // Accumulate actual height
-    totalHeight += amplitude * sinP;
-    
-    // Correct analytical accumulation of partial derivatives
-    tangent.x -= safeQ * amplitude * k * dir.x * dir.x * sinP;
-    tangent.y += amplitude * k * dir.x * cosP;
-    tangent.z -= safeQ * amplitude * k * dir.x * dir.y * sinP;
 
-    binormal.x -= safeQ * amplitude * k * dir.x * dir.y * sinP;
-    binormal.y += amplitude * k * dir.y * cosP;
-    binormal.z -= safeQ * amplitude * k * dir.y * dir.y * sinP;
+    // The mathematical cross product of the altered surface vectors yields the exact normal
+    return normalize(cross(bitangent, tangent));
 }
 
-// 1. THE HEIGHT FUNCTION
-float calculateGerstnerHeight(float2 worldXZ, float time, float waveStrength) {
-    float2 guessXZ = worldXZ;
-    float totalHeight = 0.0f;
-    float3 dummyTangent = float3(0,0,0);
-    float3 dummyBinormal = float3(0,0,0);
-    
-    // Wave 1: Primary Swell
-    EvaluateWaveLayer(worldXZ, float2(0.8f, 0.6f), 0.5f * waveStrength, 0.4f, 12.0f, 1.5f, time, guessXZ, dummyTangent, dummyBinormal, totalHeight);
-    // Wave 2: Secondary Choppy Cross-Swell
-    EvaluateWaveLayer(worldXZ, float2(-0.5f, 0.8f), 0.2f * waveStrength, 0.3f, 5.0f, 2.2f, time, guessXZ, dummyTangent, dummyBinormal, totalHeight);
-    
-    return totalHeight;
-}
-
-
-
-float3 calculateGerstnerNormal(float2 worldXZ, float time, float waveSmoothness, float waveStrength) {
-    float2 guessXZ = worldXZ;
-    float dummyHeight = 0.0f;
-    
-    // MUST initialize as clean base basis vectors before accumulating layer offsets
-    float3 tangent  = float3(1.0f, 0.0f, 0.0f);
-    float3 binormal = float3(0.0f, 0.0f, 1.0f);
-    
-    // Scale your wavelengths MUCH larger. 
-    // Small values like 5.0 and 12.0 create tiny 5-meter ripples that look like static noise in a block world.
-    // Let's use clean scales that merge perfectly with a 1024 grid factor.
-    
-    // Wave 1: Massive rolling ocean swell (Wavelength 64 blocks)
-    EvaluateWaveLayer(worldXZ, float2(0.8f, 0.6f), WAVE_HEIGHT, WAVE_STEEPNESS, 64.0f, 1.2f, time, guessXZ, tangent, binormal, dummyHeight);
-    
-    // Wave 2: Chop wave traveling cross-direction (Wavelength 32 blocks)
-    EvaluateWaveLayer(worldXZ, float2(-0.6f, 0.8f),WAVE_HEIGHT, WAVE_STEEPNESS * 0., 32.0f, 1.8f, time, guessXZ, tangent, binormal, dummyHeight);
-    
-    // Generate clean geometric normal
-    float3 rawNormal = normalize(cross(binormal, tangent));
-    
-    // Blend with absolute world up vector via smooth mix
-    return normalize(lerp(rawNormal, float3(0.0f, 1.0f, 0.0f), waveSmoothness));
-}
 
 #endif //WATER_HLSL

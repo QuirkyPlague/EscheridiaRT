@@ -2,9 +2,15 @@
 #define SETTINGS_HLSL
 
 
+
+// 0 = Lambert
+// 1 = EON
+
+#define DIFFUSE_METHOD 1
+
 #define DO_SAMPLE_LIMITS 0
-#define MAX_ACCUMULATED_SAMPLES 256
-#define MAX_BOUNCES 6
+#define MAX_ACCUMULATED_SAMPLES 1000
+#define MAX_BOUNCES 8
 
 // White furnace test
 #define WHITE_FURNACE 0
@@ -27,7 +33,7 @@
 
 // This disables objects that are not raytraced (sign text, particles stars). This will disable the menu panorama 
 // Use this if you want those to not appear in front of DOF for renders
-#define DISABLE_RASTER_OBJECTS 0
+#define DISABLE_RASTER_OBJECTS 1
 
 // Lighting Parameters
 #define SUN_AZIMUTH               (0.741)                   // Vanilla: 0.0
@@ -43,12 +49,12 @@
 // 0.0-5.0 = close range shots
 // 6.0 - 15.0 midrange shot
 // 16.0+ = long range shot
-#define DOF_FOCAL_DISTANCE 14.25f
+#define DOF_FOCAL_DISTANCE 22.25f
 
 
 // Blur does not scale with focal distance
 // Longer focal distance needs more blur if you want a very focused shot
-#define DOF_BLUR_STRENGTH 135.725f 
+#define DOF_BLUR_STRENGTH 300.725f 
 
 
 // 0 = circular 
@@ -65,13 +71,13 @@
 // If radius is made larger sun is more intense
 // Recommended to reduce sunlight intensity if increased
 #define SUN_RADIUS   0.00465f 
-#define SUN_DISC_RADIUS 0.00865f
+#define SUN_DISC_RADIUS 0.00465f 
 #define SUN_DISC_EDGE_SOFTNESS 0.08f
 #define SUN_DISC_LIMB_DARKENING 0.6f
 #define SUN_DISC_INTENSITY 50.0f
-#define SUN_INTENSITY 0.885
+#define SUN_INTENSITY 1
 #define RAIN_SUN_INTENSITY_MULTIPLIER 0.045
-#define RAIN_BLOOM_BOOST 2.6
+#define RAIN_BLOOM_BOOST 1.6
 #define COMPUTE_BLOOM_STRENGTH 0.175f
 #define CLOUD_SHADOW_OPACITY 0.616
 #define ENABLE_SUNLIGHT 1
@@ -81,10 +87,19 @@
 
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
-#define POINT_LIGHT_SHADOW_RADIUS 0.0425
-#define EMISSION_STENGTH  200
+#define POINT_LIGHT_SHADOW_RADIUS 0.0325
+#define EMISSION_STENGTH  60
 
-#define DRAINE_ALPHA 1.15
+// Number of candidate lights streamed through the RIS reservoir before tracing a single shadow ray.
+// Only applied on the primary (bounceCount == 0) hit -- see RIS_LIGHT_CANDIDATE_COUNT_INDIRECT below.
+#define RIS_LIGHT_CANDIDATE_COUNT 8
+// Candidate count used on indirect bounces instead, where the noise reduction matters far less
+// (throughput has already attenuated the contribution) but the cost is paid on every bounce/pixel.
+#define RIS_LIGHT_CANDIDATE_COUNT_INDIRECT 6
+// Number of candidate diffuse GI bounce directions resampled via RIS before continuing the path.
+// Also primary-hit only; indirect bounces fall back to a single BRDF sample (no resampling).
+#define RIS_GI_CANDIDATE_COUNT 4
+#define DRAINE_ALPHA 1.65
 
 // Deterimines whether or not the diffuse BRDF should use the accurate or fast calutlation
 // 0 = fast     (Less accurate but higher performing)
@@ -98,9 +113,9 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define RAIN_NORMAL_REDUCTION 0.45
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7925,0.415, 1.0)
-#define NOON_SUN_COLOR float4(1.0,0.95,0.75, 1.15)
-#define SUNRISE_SUN_COLOR float4(1.0,0.4737,0.175, 0.4)
+#define DAY_SUN_COLOR float4(1.0,0.7925,0.475, 1.0)
+#define NOON_SUN_COLOR float4(1.0,0.95,0.75, 0.8)
+#define SUNRISE_SUN_COLOR float4(1.0,0.4737,0.175, 0.75)
 #define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.033)
 
 // End dimension settings
@@ -108,7 +123,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define END_SUN_COLOR float3(0.658,0.221,0.573)
 #define END_SUN_RADIUS 0.135f
 #define END_SUN_DIRECTION normalize(float3(0.85, .48, 1.515))
-#define END_SUN_INTENSITY 215
+#define END_SUN_INTENSITY 60
 #define END_SUN_DISC_SIZE 0.091f // Size of the celestiabl body in the end
 #define END_SUN_DISC_INTENSITY 100.0 // Recommended you keep this low as it can screw with indirect lighting 
 #define USE_ALTERNATE_END_SUN_DISC_COLOR 0
@@ -117,13 +132,13 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define USE_END_TWIN_SUNS 1
 #define END_TWIN_SUN_RADIUS 0.0165f
 #define END_TWIN_SUN_DIRECTION normalize(float3(-0.35, 1.68, 4.4715))
-#define END_TWIN_SUN_INTENSITY 3650
+#define END_TWIN_SUN_INTENSITY 1650
 #define END_TWIN_SUN_DISC_SIZE 0.021f
 #define END_TWIN_SUN_DISC_INTENSITY 45.0
 #define END_TWIN_SUN_COLOR float3(0.458,0.521,0.973)
 #define DRAW_END_SUN_DISCS 1
 
-#define END_RAYLEIGH_MULT 32.55
+#define END_RAYLEIGH_MULT 8.55
 #define END_ZENITH_COLOR float3(0.112, 0.0644, 0.215)
 #define END_HORIZON_COLOR float3(0.432, 0.2244, 0.515)
 #define END_GROUND_COLOR float3(0.052, 0.00144, 0.0115)
@@ -147,14 +162,16 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define FOG_FADE_START 32
 #define FOG_FADE_END 286
 //sky intensity multipliers
-#define RAYLEIGH_MULT                  45.55 //brightness of the sky
-#define SKY_MIE_SCATTERING_STRENGTH    12.0   // atmospheric Mie brightness multiplier
+#define RAYLEIGH_MULT                  13.5 //brightness of the sky
+#define SKY_MIE_SCATTERING_STRENGTH    4.0   // atmospheric Mie brightness multiplier
 #define SKY_MIE_FORWARD_G              0.82  // higher values make the Mie lobe more forward-scattering
 #define SKY_HORIZON_STRENGTH           1.55  // additional broad glow centered on the horizon
 #define SKY_HORIZON_WIDTH              5.0  // larger values make the horizon band narrower
 #define SKY_SATURATION                 1.0  // 1.0 is unchanged
 #define NIGHT_INTENSITY                0.02 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
+#define ATMOSPHERE_TURBIDITY           2.0f
+    
 
 //sky zenith colors
 #define DAY_SKY_COL                    float3(0.225, 0.512, 1.185)
@@ -209,6 +226,18 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define WAVE_STEEPNESS 0.25
 #define WAVE_HEIGHT  0.5
 
-#define AGX_MIN_EV -16.4561
-#define AGX_MAX_EV 4.65
+#define AGX_MIN_EV -12.4561
+#define AGX_MAX_EV 4.0
+
+#define AUTO_EXPOSURE_MIN -12.0
+#define AUTO_EXPOSURE_MAX 6.0
+
+#define EXPOSURE_MIN -4.0
+#define EXPOSURE_MAX 2.8
+
+#define TARGET_EXPOSURE_EV 0.18
+#define EXPOSURE_PERCENTILE 0.65
+
+#define ENABLE_POM 1
+
 #endif // SETTINGS_HLSL

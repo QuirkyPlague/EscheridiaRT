@@ -21,11 +21,9 @@ void FinalCombine(
     uint2 pixelPos = dispatchThreadID.xy;
 
 
-    float3 denoisedDiffuse = outputBufferIndirectDiffuse[pixelPos].rgb;
-
-    float3 directColor = outputBufferIndirectSpecular[pixelPos].xyz;
-
-    float3 currentSample =  denoisedDiffuse;
+    // The combined path-traced image is filtered into the selected denoising
+    // output by SpecularFireflyFilter; accumulate that result, not its raw input.
+    float3 currentSample = denoisingOutputs[specularDenoisingBufferIndex][pixelPos].rgb;
     float3 historyColor = outputBufferReferencePathTracer[pixelPos].rgb;
     uint historyLength = readAccumulationFrameIdx();
 

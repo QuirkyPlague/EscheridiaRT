@@ -473,9 +473,11 @@ SurfaceInfo MaterialVanilla(HitInfo hitInfo, GeometryInfo geometryInfo, ObjectIn
                 mers.a = texel.a;
         }
         surfaceInfo.metalness = mers.r;
+        surfaceInfo.metalness = mers.a > mers.r ? 0.0 : mers.r;
         surfaceInfo.emissive = mers.g;
         surfaceInfo.roughness = mers.b;
         surfaceInfo.subsurface = mers.a;
+        surfaceInfo.subsurface = mers.r > mers.a ? 0.0 : mers.a;
 
         if (pbr.flags & (kPBRTextureDataFlagHasNormalTexture | kPBRTextureDataFlagHasHeightMapTexture | kPBRTextureDataFlagHasPackedHeightNormalsTexture))
         {

@@ -315,7 +315,7 @@
         angularDist1);
 
         float3 moonColor =  float3(0.12, 0.321,0.65);
-        float3 fullmoon = inEnd ? 0.0 : moon * moonColor * 30 * sunHeightFactor;
+        float3 fullmoon = inEnd ? 0.0 : moon * moonColor * 10 * sunHeightFactor;
 
         float3 celestial = fullSun + fullmoon;
 
@@ -564,19 +564,19 @@
     static const float  ATM_RADIUS_KM   = 6420.0f;
     static const float  EARTH_RADIUS = EARTH_RADIUS_KM;
     static const float  ATM_RADIUS   = ATM_RADIUS_KM;
-    static const float  H_RAYLEIGH   = 8.0f;
-    static const float  H_MIE        = 1.2f;
+    static const float  H_RAYLEIGH   =  inEnd ? 30.55f : 15.0f;
+    static const float  H_MIE        = inEnd ? 5.4f : 2.2f;
 
-    static const float3 BETA_RAYLEIGH = float3(4.202f, 14.558f, 27.100f) * 1e-3f;
-    static const float3 END_RAYLEIGH = float3(4.32f, 0.931f, 9.56f) * 1e-4f;
-    static const float3 RAIN_RAYLEIGH = float3(17.202f, 17.558f, 17.900f) * 1e-3f;
+    static const float3 BETA_RAYLEIGH = float3(5.202f, 12.558f, 24.100f) * 1e-3f;
+    static const float3 END_RAYLEIGH = float3(3.32f, 1.0f, 11.56f) * 1e-3f;
+    static const float3 RAIN_RAYLEIGH = float3(33.202f, 33.558f, 33.900f) * 1e-3f;
 
     static const float  BETA_MIE_S    = 45.996f * 1e-3f;
     static const float  BETA_MIE_E    = 8.440f * 1e-3f;
 
     // Ozone absorption (Chappuis band) - keep the same color tint and scale as the older
     // tuned values, but in the analytic km-based model.
-    static const float3 BETA_OZONE_ABSORPTION =  float3(0.001839,0.001648, 0.000208);
+    static const float3 BETA_OZONE_ABSORPTION =  inEnd ? float3(0.001839,0.006648, 0.000208) : float3(0.001839,0.001648, 0.000208);
 
 
     // [PRE99], see also https://www.desmos.com/calculator/giz0uiar7k
@@ -663,7 +663,7 @@ float sampleOzoneDensity(float altitude) {
     // must also be expressed in inverse-km (1/km) to maintain physically meaningful optical depth.
     float3 GetExtinction(float dR, float dM, float dO)
     {
-        float3 mieCoeff = GetAtmosphereMieCoefficients(1.2f);
+        float3 mieCoeff = GetAtmosphereMieCoefficients(ATMOSPHERE_TURBIDITY);
         float3 rayleighExt = (inEnd ? END_RAYLEIGH : RAYLEIGH_SCATTERING_BASE) * dR;
         float3 mieExt = (mieCoeff * 0.75f + float3(0.010f, 0.014f, 0.022f)) * dM;
         float3 ozoneExt = OZONE_ABSORPTION_BASE * max(dO, 0.0f) * 0.05f;
@@ -680,14 +680,10 @@ float sampleOzoneDensity(float altitude) {
         if (!RaySphereIntersect(pos, sunDir, ATM_RADIUS, t0, t1) || t1 <= 0.0f)
         return float3(1, 1, 1);
 
-        float groundT0, groundT1;
-        if (RaySphereIntersect(pos, sunDir, EARTH_RADIUS, groundT0, groundT1) && groundT0 > 0.0f)
-        {
-            t1 = min(t1, groundT0);
-        }
+       
         if (t1 <= 0.0f) return float3(1, 1, 1);
         
-        const int SUN_STEPS = 4; 
+        const int SUN_STEPS = 16; 
         float stepLen = t1 / (float)SUN_STEPS;
         float3 accumOpticalDepth = float3(0, 0, 0);
         
@@ -760,19 +756,7 @@ float sampleOzoneDensity(float altitude) {
     float  sunIntensity,
     PathRNG rng, bool drawStars)
     {
-        if (any(cameraPosKm != cameraPosKm) ||
-            any(rayDir != rayDir) ||
-            any(sunDir != sunDir) ||
-            any(abs(cameraPosKm) > 1000000.0f) ||
-            any(abs(rayDir) > 1000000.0f) ||
-            any(abs(sunDir) > 1000000.0f) ||
-            sunIntensity != sunIntensity ||
-            abs(sunIntensity) > 1000000.0f)
-        {
-            return float3(0.0f, 0.0f, 0.0f);
-        }
-
-
+       
         float3 rayOrig = cameraPosKm + float3(0.0f, EARTH_RADIUS + 0.001f, 0.0f);
         
         float t0, t1;
@@ -781,27 +765,10 @@ float sampleOzoneDensity(float altitude) {
 
         t0 = max(t0, 0.0f);
 
-        float g0, g1;
-        bool hitGround = (RaySphereIntersect(rayOrig, rayDir, EARTH_RADIUS, g0, g1) && g0 > 0.0f);
-        if (hitGround)
-        {
-            // Preserve a much wider transition band under the horizon so the atmosphere fades
-            // gradually instead of snapping to a hard ground line.
-            float horizonBand = 18.0f;
-            float groundDist = max(g0, 0.0f);
-            float fadeStart = max(0.0f, groundDist - horizonBand);
-            float fadeDistance = max(horizonBand, 1e-4f);
-            float fadeBlend = smoothstep(fadeStart, groundDist, t1);
-            t1 = lerp(t1, groundDist, fadeBlend);
-            t1 = min(t1, groundDist);
-        }
 
-        const int SAMPLE_STEPS = 8;
+        const int SAMPLE_STEPS = 16;
         float rayDistance = t1 - t0;
-        if (rayDistance <= 0.0001f)
-        {
-            return float3(0.0f, 0.0f, 0.0f);
-        }
+       
 
         float stepLen = rayDistance / (float)SAMPLE_STEPS;
      
@@ -809,19 +776,16 @@ float sampleOzoneDensity(float altitude) {
         float3 throughput = float3(1, 1, 1);
         
         float3 rayleighColor = inEnd ? END_RAYLEIGH : RAYLEIGH_SCATTERING_BASE;
-        float3 mieCoeff = GetAtmosphereMieCoefficients(2.0f);
+        float3 mieCoeff = GetAtmosphereMieCoefficients(ATMOSPHERE_TURBIDITY);
 
         float cosTheta = dot(rayDir, sunDir);
-        float lowSunMask = 1.0f - smoothstep(0.10f, 0.30f, max(sunDir.y, 0.0f));
-        float oppositeSideMask = saturate((0.2f - cosTheta) / 0.8f);
-        float antiSolarFade = oppositeSideMask * lowSunMask;
 
         float pR = RayleighPhase(cosTheta) * (inEnd ? END_RAYLEIGH_MULT : RAYLEIGH_MULT);
         float pM = CornetteShanksMiePhase(cosTheta, SKY_MIE_FORWARD_G);
         float3 mieSunColor = inEnd
             ? END_SUN_COLOR
             : lerp(getSunColor(float4(0.0f, 0.0f, 0.0f, 0.0f)).rgb, float3(1.0f, 0.78f, 0.52f), 0.25f);
-        float3 multiscatterFactor = (rayleighColor * 0.82f) * 0.08f;
+        float3 multiscatterFactor = (rayleighColor * 0.42f) * 0.18f;
 
     
         float dither = NextFloat(rng);
@@ -840,26 +804,8 @@ float sampleOzoneDensity(float altitude) {
             float3 extinction = GetExtinction(dR, dM, dO);
             float3 stepTransmittance = exp(-extinction * stepLen);
             
-            // Soft horizon shadow math
-            float3 lightRayOrig = samplePos;
-            float3 lightRayDir  = sunDir;
-            float tClosest = max(0.0f, -dot(lightRayOrig, lightRayDir));
-            float3 closestPoint = lightRayOrig + lightRayDir * tClosest;
-            float rayCenterDist = length(closestPoint);
 
-            float shadowFactor = 1.0f;
-            if (dot(samplePos, sunDir) < 0.0f)
-            {
-                // Smooth the horizon-to-ground transition instead of cutting the ray off sharply.
-                // The transition happens over a broader radius band so the atmosphere fades gently
-                // as the ray crosses beneath the local horizon.
-                float horizonThicknessKm = 2.0f;
-                float horizonBand = saturate((rayCenterDist - (EARTH_RADIUS - horizonThicknessKm)) / horizonThicknessKm);
-                float softGroundMask = smoothstep(0.0f, 1.0f, horizonBand);
-                shadowFactor = lerp(0.08f, 1.0f, softGroundMask);
-            }
-
-            float3 sunTransmittance = EvaluateAnalyticTransmittance(samplePos, sunDir, dither) * shadowFactor;
+            float3 sunTransmittance = EvaluateAnalyticTransmittance(samplePos, sunDir, dither);
             
             // Lighting logic
             float3 mieScattering =
@@ -873,18 +819,18 @@ float sampleOzoneDensity(float altitude) {
             float3 safeExtinction = max(extinction, float3(1e-4f, 1e-4f, 1e-4f));
             float3 integScattering = (stepLuminance - stepLuminance * stepTransmittance) / safeExtinction;
             totalLuminance += throughput * integScattering;
-            
+            totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.0085)  : totalLuminance;
             throughput *= stepTransmittance;
         }
         
    
-        float skyLuminance = dot(totalLuminance, float3(0.2126f, 0.7152f, 0.0722f));
+     
 
     //totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.25)  : totalLuminance;
     if(drawStars)
     {
-        float3 trueSunDir = getTrueDirectionToSun();
-        float nightFactor = smoothstep(0.12f, -0.08f, trueSunDir.y);
+      
+        float nightFactor = smoothstep(0.12f, -0.08f, sunDir.y);
         totalLuminance += ProceduralStars(rayDir, nightFactor);
     }
 
@@ -893,8 +839,8 @@ float sampleOzoneDensity(float altitude) {
         // as the sun sinks toward the horizon instead of remaining a flat bright disc.
         float3 sun = getSun(rayDir);
    
-
-        return totalLuminance + sun;
+     
+	return totalLuminance + sun;
     }
 
 

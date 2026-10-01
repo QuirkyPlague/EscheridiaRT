@@ -37,7 +37,7 @@ void PrimaryCheckerboardRayGenInline(
 {
     // *cricket noises*
     // Note that g_rootConstant0 from AdaptiveDenoiserCalculateGradients pass is accessible here
-    int totalRayCount = 24;
+   
 
     // Below is an implementation of a basic ray traced vanilla-like shader.
     if (any(dispatchThreadID.xy >= g_view.renderResolution)) return;

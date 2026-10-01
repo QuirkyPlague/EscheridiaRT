@@ -179,6 +179,11 @@ vec3 agxEotf(vec3 val){
     return val;
 }
 
+vec3 reinhard(vec3 v)
+{
+    return v / (1.0f + v);
+}
+
 vec3 reinhard_jodie(vec3 v){
     float l=luminance(v);
     vec3 tv=v/(1.f+v);
@@ -189,7 +194,7 @@ vec3 agxLook(vec3 val){
     vec3 offset=vec3(0.,0.,0.);
     vec3 slope=vec3(1.,1.,1.);
     vec3 power=vec3(1.,1.,1.);
-    float sat=1.2;
+    float sat=1.1;
     
     #if AGX_LOOK==1
     // Golden
@@ -198,7 +203,7 @@ vec3 agxLook(vec3 val){
     sat=.8;
     #elif AGX_LOOK==2
     // Punchy
-    power=vec3(1.45,1.45,1.45);
+    power=vec3(1.4,1.4,1.4);
     #endif
     
     val=pow(max(val*slope+offset,vec3(0.,0.,0.)),power);

@@ -396,5 +396,21 @@
     }
 
 
+float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {
+    float a = roughness * roughness;
+
+    // Analytical directional albedo E(x) approximations
+    float E_v = saturate(1.0 - a * (1.0 - NdotV));
+    float E_l = saturate(1.0 - a * (1.0 - NdotL));
+    float E_avg = saturate(1.0 - a * 0.5);
+
+    // Directional average of Fresnel
+    float3 F_avg = F0 + (1.0 - F0) / 21.0;
+
+    // Evaluate multiple scattering term
+    float3 Fms = (F_avg * (1.0 - E_v) * (1.0 - E_l)) / (PI * (1.0 - F_avg * (1.0 - E_avg)) + 1e-5);
+
+    return Fms;
+}
 
 #endif //BRDF_HLSL

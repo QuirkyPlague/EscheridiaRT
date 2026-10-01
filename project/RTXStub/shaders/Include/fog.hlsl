@@ -456,7 +456,6 @@ float SampleHeightFogDistance(
         return float3(r * cos(phi), r * sin(phi), z);
     }
 
-
     float3 rayMarchFog(float3 pos, float3 dir, float3 color, float maxDist, float2 pixelPos)
     {
         PathRNG rng;
