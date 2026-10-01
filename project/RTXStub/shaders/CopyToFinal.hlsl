@@ -1,3 +1,5 @@
+// This is from the MCRTX Shader template project https://github.com/veka0/mcrtx-shader-template?tab=readme-ov-file 
+
 /* MIT License
 * 
 * Copyright (c) 2025 veka0

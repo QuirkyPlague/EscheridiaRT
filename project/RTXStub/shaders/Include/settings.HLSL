@@ -162,7 +162,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define FOG_FADE_START 32
 #define FOG_FADE_END 286
 //sky intensity multipliers
-#define RAYLEIGH_MULT                  13.5 //brightness of the sky
+#define RAYLEIGH_MULT                  10.5 //brightness of the sky
 #define SKY_MIE_SCATTERING_STRENGTH    4.0   // atmospheric Mie brightness multiplier
 #define SKY_MIE_FORWARD_G              0.82  // higher values make the Mie lobe more forward-scattering
 #define SKY_HORIZON_STRENGTH           1.55  // additional broad glow centered on the horizon
@@ -226,7 +226,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define WAVE_STEEPNESS 0.25
 #define WAVE_HEIGHT  0.5
 
-#define AGX_MIN_EV -12.4561
+#define AGX_MIN_EV -10.4561
 #define AGX_MAX_EV 4.0
 
 #define AUTO_EXPOSURE_MIN -12.0
@@ -235,8 +235,8 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define EXPOSURE_MIN -4.0
 #define EXPOSURE_MAX 2.8
 
-#define TARGET_EXPOSURE_EV 0.18
-#define EXPOSURE_PERCENTILE 0.65
+#define TARGET_EXPOSURE_EV 0.48
+#define EXPOSURE_PERCENTILE 0.75
 
 #define ENABLE_POM 1
 
