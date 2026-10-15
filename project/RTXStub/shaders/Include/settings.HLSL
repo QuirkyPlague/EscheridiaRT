@@ -5,11 +5,14 @@
 
 // 0 = Lambert
 // 1 = EON
+// 2 = Hammon diffuse
 
-#define DIFFUSE_METHOD 1
+#define DIFFUSE_METHOD 2
+
+#define USE_SPECTRAL 0
 
 #define DO_SAMPLE_LIMITS 0
-#define MAX_ACCUMULATED_SAMPLES 1000
+#define MAX_ACCUMULATED_SAMPLES 64
 #define MAX_BOUNCES 8
 
 // White furnace test
@@ -44,24 +47,24 @@
 
 #define CHROMATIC_ABERRATION_INTENSITY 0.01
 
-#define ENABLE_DOF 0
+#define ENABLE_DOF 1
 // Approximate distances for the type of shot you want
 // 0.0-5.0 = close range shots
 // 6.0 - 15.0 midrange shot
 // 16.0+ = long range shot
-#define DOF_FOCAL_DISTANCE 22.25f
+#define DOF_FOCAL_DISTANCE 7.25f
 
 
 // Blur does not scale with focal distance
 // Longer focal distance needs more blur if you want a very focused shot
-#define DOF_BLUR_STRENGTH 300.725f 
+#define DOF_BLUR_STRENGTH 150.725f 
 
 
 // 0 = circular 
 // 1 = polygonal
 // with polygonal the shape is dependent on the blade count
 #define DOF_APERTURE_SHAPE 1
-#define DOF_BLADES 6
+#define DOF_BLADES 8
 
 #define DOF_APERTURE_ROTATION 180.0
 
@@ -75,7 +78,7 @@
 #define SUN_DISC_EDGE_SOFTNESS 0.08f
 #define SUN_DISC_LIMB_DARKENING 0.6f
 #define SUN_DISC_INTENSITY 50.0f
-#define SUN_INTENSITY 1
+#define SUN_INTENSITY 16
 #define RAIN_SUN_INTENSITY_MULTIPLIER 0.045
 #define RAIN_BLOOM_BOOST 1.6
 #define COMPUTE_BLOOM_STRENGTH 0.175f
@@ -90,16 +93,17 @@
 #define POINT_LIGHT_SHADOW_RADIUS 0.0325
 #define EMISSION_STENGTH  60
 
+#define POINT_LIGHT_INTENSITY 50.0
 // Number of candidate lights streamed through the RIS reservoir before tracing a single shadow ray.
 // Only applied on the primary (bounceCount == 0) hit -- see RIS_LIGHT_CANDIDATE_COUNT_INDIRECT below.
-#define RIS_LIGHT_CANDIDATE_COUNT 8
+#define RIS_LIGHT_CANDIDATE_COUNT 12
 // Candidate count used on indirect bounces instead, where the noise reduction matters far less
 // (throughput has already attenuated the contribution) but the cost is paid on every bounce/pixel.
-#define RIS_LIGHT_CANDIDATE_COUNT_INDIRECT 6
+#define RIS_LIGHT_CANDIDATE_COUNT_INDIRECT 12
 // Number of candidate diffuse GI bounce directions resampled via RIS before continuing the path.
 // Also primary-hit only; indirect bounces fall back to a single BRDF sample (no resampling).
-#define RIS_GI_CANDIDATE_COUNT 4
-#define DRAINE_ALPHA 1.65
+#define RIS_GI_CANDIDATE_COUNT 12
+#define DRAINE_ALPHA 1.05
 
 // Deterimines whether or not the diffuse BRDF should use the accurate or fast calutlation
 // 0 = fast     (Less accurate but higher performing)
@@ -113,10 +117,10 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define RAIN_NORMAL_REDUCTION 0.45
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7925,0.475, 1.0)
-#define NOON_SUN_COLOR float4(1.0,0.95,0.75, 0.8)
-#define SUNRISE_SUN_COLOR float4(1.0,0.4737,0.175, 0.75)
-#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.033)
+#define DAY_SUN_COLOR float4(1.0,0.7925,0.475, 1.14)
+#define NOON_SUN_COLOR float4(1.0,0.95,0.75, 1.1)
+#define SUNRISE_SUN_COLOR float4(1.0,0.4737,0.175, 1.15)
+#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.0033)
 
 // End dimension settings
 #define ENABLE_END_SUNLIGHT 1
@@ -162,15 +166,13 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define FOG_FADE_START 32
 #define FOG_FADE_END 286
 //sky intensity multipliers
-#define RAYLEIGH_MULT                  10.5 //brightness of the sky
-#define SKY_MIE_SCATTERING_STRENGTH    4.0   // atmospheric Mie brightness multiplier
+#define RAYLEIGH_MULT                  1.1 //brightness of the sky
+#define SKY_MIE_SCATTERING_STRENGTH    0.5   // atmospheric Mie brightness multiplier
 #define SKY_MIE_FORWARD_G              0.82  // higher values make the Mie lobe more forward-scattering
-#define SKY_HORIZON_STRENGTH           1.55  // additional broad glow centered on the horizon
-#define SKY_HORIZON_WIDTH              5.0  // larger values make the horizon band narrower
-#define SKY_SATURATION                 1.0  // 1.0 is unchanged
+
 #define NIGHT_INTENSITY                0.02 //brightness of the night sky
 #define NIGHT_INDIRECT_INTENSITY       0.35  //brightness of the night sky light without affecting actual intensity
-#define ATMOSPHERE_TURBIDITY           2.0f
+#define ATMOSPHERE_TURBIDITY           4.0f
     
 
 //sky zenith colors
@@ -209,8 +211,8 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define GROUND_BLEND                    0.55
 
 
-#define WAVE_FADE_START 24.0
-#define WAVE_FADE_END   365.0
+#define WAVE_FADE_START 32.0
+#define WAVE_FADE_END   315.0
 
 #define WAVE_SMOOTHING                                      (0.0513)
 #define WAVE_INTENSITY                                      (0.0652)
@@ -223,21 +225,54 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define WAVE_OCTAVE_MIX_WEIGHT                              (0.326)
 #define WAVE_PULL                                           (0.34235)
 
-#define WAVE_STEEPNESS 0.25
-#define WAVE_HEIGHT  0.5
+#define WAVE_STEEPNESS 0.09
+#define WAVE_HEIGHT  0.0805
+#define WAVE_BASE_WAVELENGTH 6.8f
+#define WAVE_COUNT 6
 
-#define AGX_MIN_EV -10.4561
-#define AGX_MAX_EV 4.0
+// Gerstner Micro Wave Details (Inter-octave ripples and high-frequency capillary texture)
+#define ENABLE_MICRO_WAVES          1       // 1 = Enable micro wave details between octaves, 0 = base octaves only
+#define WAVE_MICRO_WAVES_PER_OCTAVE 2       // Number of intermediate micro waves between each octave (1 or 2)
+#define WAVE_MICRO_AMPLITUDE_MULT   0.35f   // Amplitude scale of micro waves relative to parent octave
+#define WAVE_MICRO_FREQUENCY_MULT   2.55f   // Frequency multiplier for the in-between micro waves
+#define WAVE_MICRO_STEEPNESS        0.145f   // Sharpness / steepness factor for micro wave crests
+#define WAVE_MICRO_CHOP_ANGLE       8.15f   // Directional cross-angle offset (radians) creating 2D surface chop
+#define WAVE_MICRO_SPEED_MULT       1.20f   // Capillary phase velocity multiplier
+
+// Water Parallax (POM)
+#define ENABLE_WATER_PARALLAX 1
+#define WATER_PARALLAX_STEPS 8
+#define WATER_PARALLAX_MAX_DIST 24.5f
+
+
+
+#define AGX_MIN_EV -12.4561
+#define AGX_MAX_EV 5.2152
 
 #define AUTO_EXPOSURE_MIN -12.0
-#define AUTO_EXPOSURE_MAX 6.0
+#define AUTO_EXPOSURE_MAX 8.0
 
-#define EXPOSURE_MIN -4.0
-#define EXPOSURE_MAX 2.8
+#define EXPOSURE_MIN -2.5
+#define EXPOSURE_MAX 5.3
+#define EXPOSURE_MAX_DAY 8.0
+#define EXPOSURE_MAX_NIGHT 2.0
 
-#define TARGET_EXPOSURE_EV 0.48
-#define EXPOSURE_PERCENTILE 0.75
+#define TARGET_EXPOSURE_EV 0.7
+#define EXPOSURE_PERCENTILE 0.65
+
+// Minimum scene luminance that auto-exposure will adapt down to.
+// Keeps naturally dark areas (caves, unlit nights) dark instead of boosting black into mid-gray.
+#define MIN_ADAPTATION_LUMINANCE 0.08
+
+// Center-weighted metering bias: increases the importance of tiles near the screen center (player gaze).
+#define CENTER_METERING_STRENGTH 2.0
+
+// Minimum tile average luminance to be counted in the histogram. Pitch black tiles are clipped out.
+#define BLACK_CLIP_LUMINANCE 0.0005
 
 #define ENABLE_POM 1
+
+#define MINIMUM_ALPHA_BLEND_OPACITY 0.05f
+#define ALPHA_BLEND_OPACITY_CURVE 3.0f
 
 #endif // SETTINGS_HLSL

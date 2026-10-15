@@ -320,19 +320,6 @@ float SampleHeightFogDistance(
         (4.0 * PI * pow(max(denom, 1e-6), 1.5));
     }
 
-    float PhaseDraine(float cosTheta, float g, float alpha)
-{
-    float g2 = g * g;
-    float denom = 1.0 + g2 - 2.0 * g * cosTheta;
-
-    float normalization =
-        1.0 + alpha * (1.0 + 2.0 * g2) / 3.0;
-
-    return
-        (1.0 - g2) * (1.0 + alpha * cosTheta * cosTheta) /
-        (4.0 * PI * normalization *
-         pow(max(denom, 1e-6), 1.5));
-}
 
 
     float3 SampleDraine(
@@ -456,6 +443,56 @@ float SampleHeightFogDistance(
         return float3(r * cos(phi), r * sin(phi), z);
     }
 
+ float3 GetAtmosphereSunTransmittance(float3 origin, float3 dir, inout PathRNG rng, int maxSteps = 16)
+    {
+        const float ATMOSPHERE_RADIUS = 350.0f;
+
+        float t0, t1;
+        if (!RaySphereIntersect(origin, dir, ATMOSPHERE_RADIUS, t0, t1) || t1 <= 0.0f)
+        return 1.0;
+
+        float t = max(t0, 0.0f);
+
+        float3 sigmaT3 =
+        inEnd ?
+        getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY :
+        getMediaPrimaryExtinction();
+
+        sigmaT3 = lerp(
+        sigmaT3,
+        float3(0.0225, 0.0225, 0.0225),
+        getBiomeAdjustedRainLevel());
+
+        float majorant = max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z));
+        majorant = max(majorant, 1e-6f);
+
+        float3 transmittance = 1.0;
+        int steps = 0;
+
+        while (steps++ < maxSteps)
+        {
+            float xi = max(NextFloat(rng), 1e-6f);
+            t += -log(xi) / majorant;
+
+            if (t >= t1)
+            break;
+
+            float3 candidatePos = origin + dir * t;
+            float densityModifier = calcDensityModifier(candidatePos);
+            float3 localSigmaT3 = sigmaT3 * densityModifier;
+
+            // Ratio tracking: accumulate the null-collision probability at each interaction
+            // instead of stochastically accepting/rejecting, so a single ray gives a continuous,
+            // low-variance transmittance value rather than an all-or-nothing shadow test.
+            transmittance *= 1.0 - saturate(localSigmaT3 / majorant);
+
+            if (all(transmittance < 1e-3))
+            break;
+        }
+
+        return transmittance;
+    }
+    
     float3 rayMarchFog(float3 pos, float3 dir, float3 color, float maxDist, float2 pixelPos)
     {
         PathRNG rng;

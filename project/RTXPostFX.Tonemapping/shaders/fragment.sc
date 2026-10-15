@@ -21,7 +21,7 @@ $input v_texcoord0
 #include "../../RTXStub/shaders/Include/Settings.hlsl"
 // Bloom strength
 
-#define BLOOM_MULTIPLIER 6.5
+#define BLOOM_MULTIPLIER 2.5
 
 // Approximate mesopic/scotopic color shift. These gains reduce long-wavelength
 // red sensitivity and increase blue sensitivity as scene adaptation gets darker.
@@ -124,7 +124,7 @@ void Frag(FragmentInput fragInput,inout FragmentOutput fragOutput){
     hdr=tonemapAgX(hdr);
     hdr=linearToSRGB(hdr);
     #else
-    hdr=ACESFittedTonemap(hdr);
+    hdr=tonemapAgX(hdr);
     hdr=linearToSRGB(hdr);
     hdr=mix(hdr,raster.rgb,raster.a);
     #endif

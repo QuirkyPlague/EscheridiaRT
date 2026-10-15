@@ -72,12 +72,12 @@
                     GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
                     SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object); 
                     
-                    // Attenuate light passing through alpha blended surface
-                    transmission *= lerp(surfaceInfo.color, 0.0f.xxx, surfaceInfo.alpha); 
+                    // Attenuate light passing through transmissive alpha-blended surface (dielectric transmission tint)
+                    transmission *= GetAlphaBlendTransmissionTint(surfaceInfo.color); 
                     
                     continue; 
                 } 
-                else if (hitInfo.materialType == MATERIAL_TYPE_WATER) { 
+                else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
                     GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
                     
                     // Get depth from shadow ray origin to water intersection point
@@ -130,14 +130,14 @@
                             q.CommitNonOpaqueTriangleHit();
                         }
                     }
-                    else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) {
-                          GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
-                    SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object); 
+                    else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) { 
+                        GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
+                        SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object); 
                     
-                    // Attenuate light passing through alpha blended surface
-                    transmission *= lerp(surfaceInfo.color, 0.0f.xxx, surfaceInfo.alpha); 
+                        // Attenuate light passing through transmissive alpha-blended surface (dielectric transmission tint)
+                        transmission *= GetAlphaBlendTransmissionTint(surfaceInfo.color); 
                     
-                    continue; 
+                        continue; 
                     }
                     else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
                         float3 waterExtinction = calcTransmittance(q.CandidateTriangleRayT(), getMediaExtinction(MEDIA_TYPE_WATER).rgb);

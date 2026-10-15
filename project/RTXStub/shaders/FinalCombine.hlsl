@@ -50,6 +50,6 @@ void FinalCombine(
  
 	
 
-    outputBufferReferencePathTracer[pixelPos] = float4(historyColor, 1);
+    outputBufferReferencePathTracer[pixelPos] = float4(historyColor, finalAlpha);
     outputBufferFinal[pixelPos] = float4(historyColor, finalAlpha);
 }

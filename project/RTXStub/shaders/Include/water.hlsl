@@ -76,62 +76,170 @@ float3 waveNormal(float2 pos, float e, float depth)
 
 
 
-// Simple, deterministic hash function to generate wave attributes procedurally
-float WaveHash(float seed)
+#ifndef TWO_PI
+#define TWO_PI 6.28318530718f
+#endif
+
+#ifndef WAVE_BASE_WAVELENGTH
+#define WAVE_BASE_WAVELENGTH 3.8f
+#endif
+
+struct GerstnerSample {
+    float height;
+    float2 horizontalOffset;
+    float3 dPdx;
+    float3 dPdz;
+};
+
+GerstnerSample SampleGerstner(float2 xz, float time)
 {
-    return frac(sin(seed) * 43758.5453123f);
+    GerstnerSample wave;
+    wave.height = 0.0f;
+    wave.horizontalOffset = float2(0.0f, 0.0f);
+    wave.dPdx = float3(1.0f, 0.0f, 0.0f);
+    wave.dPdz = float3(0.0f, 0.0f, 1.0f);
+
+    const uint numWaves = WAVE_COUNT;
+    float baseWavelength = WAVE_BASE_WAVELENGTH;
+    float baseAmplitude = WAVE_HEIGHT;
+    float totalSteepness = clamp(WAVE_STEEPNESS, 0.0f, 3.95f);
+
+    #if (ENABLE_MICRO_WAVES == 1)
+    const float microWavesPerOctave = (float)WAVE_MICRO_WAVES_PER_OCTAVE;
+    const float totalWeight = (float)numWaves * (1.0f + microWavesPerOctave * (WAVE_MICRO_STEEPNESS * WAVE_MICRO_AMPLITUDE_MULT));
+    float waveWeight = totalSteepness / totalWeight;
+    float microWeight = waveWeight * WAVE_MICRO_STEEPNESS;
+    #else
+    float waveWeight = totalSteepness / (float)numWaves;
+    #endif
+
+    for (uint i = 0; i < numWaves; ++i) {
+        float angle = (float)i * 2.399963f;
+        float2 direction = normalize(float2(cos(angle), sin(angle)));
+
+        float wavelength = baseWavelength * pow(0.78f, (float)i);
+        float waveVec = TWO_PI / wavelength;
+
+        float amplitude = baseAmplitude * pow(0.80f, (float)i);
+
+        float choppiness = waveWeight / (amplitude * waveVec);
+
+        float phase = waveVec * dot(direction, xz) - sqrt(9.81f * waveVec) * (time * WAVE_SPEED * 0.25f);
+
+        float sinPhase = sin(phase);
+        float cosPhase = cos(phase);
+
+        wave.height += amplitude * sinPhase;
+        wave.horizontalOffset += choppiness * amplitude * direction * cosPhase;
+
+        wave.dPdx += float3(-choppiness * direction.x * direction.x * sinPhase, amplitude * waveVec * direction.x * cosPhase,-choppiness * direction.x * direction.y * sinPhase);
+        wave.dPdz += float3(-choppiness * direction.x * direction.y * sinPhase,amplitude * waveVec * direction.y * cosPhase,-choppiness * direction.y * direction.y * sinPhase);
+
+        #if (ENABLE_MICRO_WAVES == 1)
+        //Adds one small wave between octaves
+        {
+            float microAngle = angle + WAVE_MICRO_CHOP_ANGLE;
+            float2 microDirection = normalize(float2(cos(microAngle), sin(microAngle)));
+
+            float microWavelength = wavelength / WAVE_MICRO_FREQUENCY_MULT;
+            float microVec = TWO_PI / microWavelength;
+
+            float microAmplitude = amplitude * WAVE_MICRO_AMPLITUDE_MULT;
+            float microChoppiness = choppiness / (microAmplitude * microVec);
+
+            float microPhase = microVec * dot(microDirection, xz) - sqrt(9.81f * microVec) * (time * WAVE_SPEED * 0.25f * WAVE_MICRO_SPEED_MULT);
+
+            float microS = sin(microPhase);
+            float microC = cos(microPhase);
+
+            wave.height += microAmplitude * microS;
+            wave.horizontalOffset += microChoppiness * microAmplitude * microDirection * microC;
+
+            wave.dPdx += float3(-microChoppiness * microAmplitude * microDirection.x * microDirection.x * microS,microAmplitude * microVec * microDirection.x * microC, -microChoppiness * microAmplitude * microDirection.x * microDirection.y * microS);
+            wave.dPdz += float3(-microChoppiness * microAmplitude * microDirection.x * microDirection.y * microS, microAmplitude * microVec * microDirection.y * microC, -microChoppiness * microAmplitude * microDirection.y * microDirection.y * microS);
+        }
+
+        #if (WAVE_MICRO_WAVES_PER_OCTAVE > 1)
+        // Secondary wave that rolls in a different direction
+        {
+            float microAngle2 = angle - WAVE_MICRO_CHOP_ANGLE + 0.61803398f;
+            float2 microDirection = normalize(float2(cos(microAngle2), sin(microAngle2)));
+
+            float microWavelength = wavelength / (WAVE_MICRO_FREQUENCY_MULT * 1.35f);
+            float microVec = TWO_PI / microWavelength;
+
+            float microAmplitude = amplitude * (WAVE_MICRO_AMPLITUDE_MULT * 0.65f);
+            float microChoppiness= choppiness / (microAmplitude * microVec);
+
+            float microPhase2 = microVec * dot(microDirection, xz) - sqrt(9.81f * microVec) * (time * WAVE_SPEED * 0.25f * (WAVE_MICRO_SPEED_MULT * 1.1f));
+
+            float microS2 = sin(microPhase2);
+            float microC2 = cos(microPhase2);
+
+            wave.height += microAmplitude * microS2;
+            wave.horizontalOffset += microChoppiness * microAmplitude * microDirection * microC2;
+
+            wave.dPdx += float3(-microChoppiness * microAmplitude * microDirection.x * microDirection.x * microS2,microAmplitude * microVec * microDirection.x * microC2, -microChoppiness * microAmplitude * microDirection.x * microDirection.y * microS2);
+            wave.dPdz += float3(-microChoppiness * microAmplitude * microDirection.x * microDirection.y * microS2,microAmplitude * microVec * microDirection.y * microC2,-microChoppiness * microAmplitude * microDirection.y * microDirection.y * microS2);
+        }
+        #endif // WAVE_MICRO_WAVES_PER_OCTAVE > 1
+        #endif // ENABLE_MICRO_WAVES == 1
+    }
+    return wave;
 }
 
-// Analytically calculates the exact ocean surface normal for any given position and time
-float3 GetAnharmonicWaveNormal(float3 worldPos, float time, uint waveCount)
+// Parallax evaluation for water waves using iterative contact refinement.
+// Directly solves the ray-surface intersection against the exact Gerstner waves,
+// ensuring every visible wave normal pattern has corresponding 3D displacement.
+float EvaluateWaterParallax(
+    float3 hitPos,
+    float3 rayDir,
+    float3 geoNormal,
+    float2 waveOriginXZ,
+    float time,
+    float waveFade,
+    out float3 displacedHitPos,
+    out GerstnerSample outWave)
 {
-    // Initialize the identity matrix derivatives (Tangent and Bitangent)
-    float3 tangent = float3(1.0f, 0.0f, 0.0f);
-    float3 bitangent = float3(0.0f, 0.0f, 1.0f);
+    displacedHitPos = hitPos;
 
-    // Accumulate waves using the exact same seed generation across threads
-    for (uint i = 0; i < waveCount; ++i)
-    {
-        // Derive unique wave parameters purely from the loop index 'i'
-        float seed = float(i) * 12.9898f;
+    float2 baseXZ = hitPos.xz - waveOriginXZ;
+    baseXZ = baseXZ - floor(baseXZ / 1024.0f) * 1024.0f;
 
-        // Pseudo-random angle for wave direction
-        float angle = WaveHash(seed) * 6.2831853f;
-        float2 direction = float2(cos(angle), sin(angle));
-
-        // Procedural distribution of amplitudes, wavelengths, and steepness
-        float amplitude = 0.05f + (WaveHash(seed + 1.0f) * 0.45f) / float(i + 1);
-        float wavelength = 2.0f + WaveHash(seed + 2.0f) * 35.0f * (float(i + 1) / float(waveCount));
-        float speed = 0.5f + WaveHash(seed + 3.0f) * 2.5f;
-        float steepness = 0.1f + WaveHash(seed + 4.0f) * 0.4f;
-
-        // Core Gerstner Wave Constants
-        float k = (2.0f * 3.14159265f) / wavelength;
-        float c = speed * sqrt(9.81f / k); // Deep water dispersion relation
-
-        // Phase calculation based on input position and time
-        float phase = k * dot(direction, worldPos.xz) - c * time;
-
-        float cosPhase = cos(phase);
-        float sinPhase = sin(phase);
-
-        // Sharpness constraint factor to prevent wave self-intersection loops
-        float q = steepness / (amplitude * k * (float)waveCount);
-        float wa = k * amplitude;
-
-        // Analytical Partial Derivatives (Jacobians)
-        tangent.x   -= q * wa * direction.x * direction.x * sinPhase;
-        tangent.y   += wa * direction.x * cosPhase;
-        tangent.z   -= q * wa * direction.x * direction.y * sinPhase;
-
-        bitangent.x -= q * wa * direction.x * direction.y * sinPhase;
-        bitangent.y += wa * direction.y * cosPhase;
-        bitangent.z -= q * wa * direction.y * direction.y * sinPhase;
+    #if (ENABLE_WATER_PARALLAX == 0)
+    outWave = SampleGerstner(baseXZ, time);
+    return 0.0f;
+    #else
+    // Only apply parallax on largely horizontal surfaces (not vertical waterfall walls)
+    if (abs(geoNormal.y) < 0.5f || waveFade <= 0.01f) {
+        outWave = SampleGerstner(baseXZ, time);
+        return 0.0f;
     }
 
-    // The mathematical cross product of the altered surface vectors yields the exact normal
-    return normalize(cross(bitangent, tangent));
-}
+    float safeDy = (abs(rayDir.y) < 0.12f) ? (sign(rayDir.y) * 0.12f) : rayDir.y;
+    float maxT = clamp(2.5f * WAVE_HEIGHT / abs(safeDy), 0.2f, WATER_PARALLAX_MAX_DIST);
 
+    float parralaxHeight = 0.0f;
+    float2 currXZ = baseXZ;
+    GerstnerSample wave;
+
+    [unroll]
+    for (uint iter = 0; iter < WATER_PARALLAX_STEPS; ++iter) {
+        wave = SampleGerstner(currXZ, time);
+        float height = wave.height * waveFade;
+        float targetHeight = clamp(height / safeDy, -maxT, maxT);
+        parralaxHeight = lerp(parralaxHeight, targetHeight, 0.75f);
+        currXZ = baseXZ + parralaxHeight * rayDir.xz;
+    }
+
+    wave = SampleGerstner(currXZ, time);
+    outWave = wave;
+
+    float finalHeight = wave.height * waveFade;
+    float finalParallaxHeight = clamp(finalHeight / safeDy, -maxT, maxT);
+    displacedHitPos = hitPos + finalParallaxHeight * rayDir;
+    return finalParallaxHeight;
+    #endif
+}
 
 #endif //WATER_HLSL

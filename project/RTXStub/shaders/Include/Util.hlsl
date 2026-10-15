@@ -481,12 +481,33 @@ float3 offset_ray(const float3 p, const float3 n)
 
 }
 
+float saturatedLinearRemapZeroToOne(in float value, in float zeroValue, in float oneValue)
+{
+    return saturate(mad(value, 1.f / (oneValue - zeroValue), -zeroValue / (oneValue - zeroValue)));
+}
+
+
 float getBiomeAdjustedRainLevel()
 {
     if (isInNether() || isInEnd()) return 0.0;
     
     return min(g_view.rainLevel, g_view.skyColorBlend);
 }
+
+    float PhaseDraine(float cosTheta, float g, float alpha)
+{
+    float g2 = g * g;
+    float denom = 1.0 + g2 - 2.0 * g * cosTheta;
+
+    float normalization =
+        1.0 + alpha * (1.0 + 2.0 * g2) / 3.0;
+
+    return
+        (1.0 - g2) * (1.0 + alpha * cosTheta * cosTheta) /
+        (4.0 * PI * normalization *
+         pow(max(denom, 1e-6), 1.5));
+}
+
 
 uint readAccumulationFrameIdx() { return outputBufferToneMappingHistogram[uint2(0,0)]; }
 void storeAccumulationFrameIdx(uint frameIdx) { outputBufferToneMappingHistogram[uint2(0,0)] = frameIdx; }

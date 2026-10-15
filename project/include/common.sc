@@ -194,7 +194,7 @@ vec3 agxLook(vec3 val){
     vec3 offset=vec3(0.,0.,0.);
     vec3 slope=vec3(1.,1.,1.);
     vec3 power=vec3(1.,1.,1.);
-    float sat=1.1;
+    float sat=1.06;
     
     #if AGX_LOOK==1
     // Golden

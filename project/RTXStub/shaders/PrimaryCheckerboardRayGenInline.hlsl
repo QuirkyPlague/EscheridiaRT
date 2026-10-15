@@ -60,6 +60,7 @@ void PrimaryCheckerboardRayGenInline(
          rayDesc.TMin = 0; rayDesc.TMax = 10000;
         
              
+     float3 directColor; float3 primaryThroughput;
      color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy, firstHitDist);
 
      float4 blueNoise = GetBlueNoiseValue(dispatchThreadID.xy);
@@ -85,6 +86,8 @@ motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist
     if (any(isnan(color)) || any(isnan(motionVector)) || isnan(hitDist))
         color = (dispatchThreadID.x / 32 + dispatchThreadID.y / 32) & 1 ? float3(1, 0, 1) : 0;
     #endif
+
+   
 
     // The only 3 buffers necessary for upscaling support (e.g. DLSS)
     outputBufferIndirectDiffuse[dispatchThreadID.xy] = float4(color, 1);

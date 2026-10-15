@@ -7,14 +7,6 @@
 	
 	
 #define ANAMORPHIC_STRETCH 1.9;
-// From Coding Adventures: Ray Tracing https://youtu.be/Qz0KTGYJtUk?si=w0Hq8sTNKwmuw0zv 
-float2 randomPointInCircle(inout PathRNG rngState)
-{
-	float angle = NextFloat(rngState) * 2 * PI; // 2 * PI
-	float2 pointOnCircle = float2(cos(angle), sin(angle));
-	return pointOnCircle * sqrt(NextFloat(rngState));
-}
-
 //from https://pbr-book.org/3ed-2018/Camera_Models/Projective_Camera_Models
 float2 randomPointInRegularPolygon(inout PathRNG rng,uint bladeCount,float rotation)
 {
@@ -69,6 +61,7 @@ void computeDOFRay(uint2 pixelCoord, float3 rayOrigin, float3 rayDir, in PathRNG
     outOrigin = rayOrigin;
     #endif
 }
+	
 	
 	
 

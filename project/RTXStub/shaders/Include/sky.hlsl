@@ -3,6 +3,7 @@
 
     #include "settings.hlsl"
     #include "Util.hlsl"
+  
 
     float Rayleigh(float mu) {
         return 3.0 * (1.0 + mu * mu) / (16.0 * PI);
@@ -59,8 +60,8 @@
             DAY_SUN_COLOR,
             DAY_SUN_COLOR,
             SUNRISE_SUN_COLOR,
-            SUNRISE_SUN_COLOR * 0.06,
-            SUNRISE_SUN_COLOR * 0.025,
+            SUNRISE_SUN_COLOR * 0.8,
+            SUNRISE_SUN_COLOR * 0.625,
             MOON_COLOR
         };
 
@@ -69,8 +70,8 @@
             0.1920399368, // 3000
             0.3466664553, // 1000
             0.4309642911, // 0
-            0.4746705294, // 23500
-            0.5193186402, // 23000
+            0.4446705294, // 23500
+            0.5093186402, // 23000
             0.5621
         };
 
@@ -564,10 +565,10 @@
     static const float  ATM_RADIUS_KM   = 6420.0f;
     static const float  EARTH_RADIUS = EARTH_RADIUS_KM;
     static const float  ATM_RADIUS   = ATM_RADIUS_KM;
-    static const float  H_RAYLEIGH   =  inEnd ? 30.55f : 15.0f;
+    static const float  H_RAYLEIGH   =  inEnd ? 30.55f : 32.0f;
     static const float  H_MIE        = inEnd ? 5.4f : 2.2f;
 
-    static const float3 BETA_RAYLEIGH = float3(5.202f, 12.558f, 24.100f) * 1e-3f;
+    static const float3 BETA_RAYLEIGH = float3(4.202f, 12.558f, 27.100f) * 1e-3f;
     static const float3 END_RAYLEIGH = float3(3.32f, 1.0f, 11.56f) * 1e-3f;
     static const float3 RAIN_RAYLEIGH = float3(33.202f, 33.558f, 33.900f) * 1e-3f;
 
@@ -706,7 +707,7 @@ float sampleOzoneDensity(float altitude) {
         return (3.0f / (16.0f * 3.14159265f)) * (1.0f + cosTheta * cosTheta);
     }
 
-    float CornetteShanksMiePhase(float cosTheta, float g = 0.8f)
+    float CornetteShanksMiePhase(float cosTheta, float g)
     {
         float g2 = g * g;
         float num = 3.0f * (1.0f - g2) * (1.0f + cosTheta * cosTheta);
@@ -780,8 +781,8 @@ float sampleOzoneDensity(float altitude) {
 
         float cosTheta = dot(rayDir, sunDir);
 
-        float pR = RayleighPhase(cosTheta) * (inEnd ? END_RAYLEIGH_MULT : RAYLEIGH_MULT);
-        float pM = CornetteShanksMiePhase(cosTheta, SKY_MIE_FORWARD_G);
+        float pR = RayleighPhase(cosTheta);
+        float pM = PhaseDraine(cosTheta, SKY_MIE_FORWARD_G, DRAINE_ALPHA);
         float3 mieSunColor = inEnd
             ? END_SUN_COLOR
             : lerp(getSunColor(float4(0.0f, 0.0f, 0.0f, 0.0f)).rgb, float3(1.0f, 0.78f, 0.52f), 0.25f);

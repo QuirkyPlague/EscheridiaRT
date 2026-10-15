@@ -6,8 +6,8 @@ static const uint HISTOGRAM_FIRST_BIN = 1;
 static const uint HISTOGRAM_BIN_COUNT = 255;
 static const float HISTOGRAM_LUMA_FLOOR = 1e-4;
 static const float SKY_PATH_LENGTH_THRESHOLD = 60000.0;
-static const uint SKY_EXPOSURE_WEIGHT = 1;
-static const uint TERRAIN_EXPOSURE_WEIGHT = 4;
+static const uint SKY_EXPOSURE_WEIGHT = 1.0;
+static const uint TERRAIN_EXPOSURE_WEIGHT = 3.0;
 
 groupshared float tileLuminanceSums[256];
 groupshared uint tileWeightSums[256];
@@ -68,18 +68,32 @@ void ToneMappingHistogram(
     if (groupIndex == 0 && tilePixelCounts[0] > 0 && tileWeightSums[0] > 0)
     {
         float tileAverageLuminance = tileLuminanceSums[0] / tileWeightSums[0];
-        float logLuminance = log2(max(tileAverageLuminance, HISTOGRAM_LUMA_FLOOR));
 
-        float normalized = saturate(
-            (logLuminance - AUTO_EXPOSURE_MIN) /
-            (AUTO_EXPOSURE_MAX - AUTO_EXPOSURE_MIN));
-        uint bin = HISTOGRAM_FIRST_BIN +
-            min((uint)(normalized * HISTOGRAM_BIN_COUNT), HISTOGRAM_BIN_COUNT - 1);
+        // Pitch-black tiles (below black clip floor) are omitted so unlit cave voids
+        // do not artificially pull the exposure percentile up to daytime levels.
+        if (tileAverageLuminance >= BLACK_CLIP_LUMINANCE)
+        {
+            float logLuminance = log2(max(tileAverageLuminance, HISTOGRAM_LUMA_FLOOR));
 
-        // Terrain-dominated tiles receive more votes; all-sky tiles still vote.
-        uint tileVoteWeight = max(
-            1u,
-            (tileWeightSums[0] + tilePixelCounts[0] / 2) / tilePixelCounts[0]);
-        InterlockedAdd(outputBufferToneMappingHistogram[uint2(bin, 0)], tileVoteWeight);
+            float normalized = saturate(
+                (logLuminance - AUTO_EXPOSURE_MIN) /
+                (AUTO_EXPOSURE_MAX - AUTO_EXPOSURE_MIN));
+            uint bin = HISTOGRAM_FIRST_BIN +
+                min((uint)(normalized * HISTOGRAM_BIN_COUNT), HISTOGRAM_BIN_COUNT - 1);
+
+            // Center-weighted metering: tiles closer to screen center (player gaze) receive higher vote weight.
+            float2 tileCenterPix = float2(groupID.xy * 16u + 8u);
+            float2 tileNdc = (tileCenterPix / max(float2(fullRes), float2(1.0, 1.0))) * 2.0 - 1.0;
+            float distSq = dot(tileNdc, tileNdc);
+            float centerWeight = 1.0 + CENTER_METERING_STRENGTH * exp(-distSq * 2.0);
+
+            // Terrain-dominated tiles receive more votes; all-sky tiles still vote.
+            uint baseVote = max(
+                1u,
+                (tileWeightSums[0] + tilePixelCounts[0] / 2) / tilePixelCounts[0]);
+            uint tileVoteWeight = max(1u, (uint)round(float(baseVote) * centerWeight));
+
+            InterlockedAdd(outputBufferToneMappingHistogram[uint2(bin, 0)], tileVoteWeight);
+        }
     }
 }

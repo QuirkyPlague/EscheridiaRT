@@ -35,6 +35,8 @@
     #include "brdf.hlsl"
     #include "water.hlsl"
     #include "fog.hlsl"
+    #include "DirectLighting.hlsl"
+
 
 
     static const uint kBlueNoiseLayerMask = kBlueNoiseLayerCount - 1;
@@ -47,7 +49,6 @@
         uint layerIndex = GetBlueNoiseLayerIndex(pixelCoord, g_view.frameCount);
         return LoadBlueNoise(pixelCoord, layerIndex);
     }
-
 
 
 
@@ -128,11 +129,13 @@
 
         float4 sunColor = inEnd ? float4(END_SUN_COLOR, 1.0) : getSunColor(float4(0.xxxx));
         
-        float sunLuminance = luminance(sunColor.rgb * sunColor.a ) * RAYLEIGH_MULT;
+        float sunEv = 1.0 * exp2(sunColor.a * SUN_INTENSITY);
+        
+        float sunLuminance = luminance(sunColor.rgb * sunColor.a * SUN_INTENSITY) * RAYLEIGH_MULT;
         mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
         // The atmosphere function adds the planet radius internally; pass the
         // existing 1000-meter offset converted to kilometers.
-        const float minSunIntensity = 1.0;
+        const float minSunIntensity = 0.3;
         sunLuminance = max(sunLuminance, minSunIntensity); // This allows for the sun to have an effect on the sky even after sunset
         float3 rayOriginKm = float3(0.0f, 1000.0f, 0.0f) * 0.001f;
         float3 finalColor = RenderHillaireAtmosphereLUTless(
@@ -143,7 +146,9 @@
         rng,true);
         
         
-
+        #if WHITE_FURNACE == 1
+            finalColor = float3(1.0, 1.0, 1.0);
+        #endif
         
         rayState.color += rayState.throughput * finalColor;
     }
@@ -153,55 +158,7 @@
     // for primary-ray scattering (see the volumeStart/volumeExit/sigmaT3 setup in RenderRay), so
     // direct sunlight on surfaces dims by the same fog the path tracer actually walked through
     // instead of an unrelated model.
-    float3 GetAtmosphereSunTransmittance(float3 origin, float3 dir, inout PathRNG rng, int maxSteps = 16)
-    {
-        const float ATMOSPHERE_RADIUS = 350.0f;
-
-        float t0, t1;
-        if (!RaySphereIntersect(origin, dir, ATMOSPHERE_RADIUS, t0, t1) || t1 <= 0.0f)
-        return 1.0;
-
-        float t = max(t0, 0.0f);
-
-        float3 sigmaT3 =
-        inEnd ?
-        getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY :
-        getMediaPrimaryExtinction();
-
-        sigmaT3 = lerp(
-        sigmaT3,
-        float3(0.0225, 0.0225, 0.0225),
-        getBiomeAdjustedRainLevel());
-
-        float majorant = max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z));
-        majorant = max(majorant, 1e-6f);
-
-        float3 transmittance = 1.0;
-        int steps = 0;
-
-        while (steps++ < maxSteps)
-        {
-            float xi = max(NextFloat(rng), 1e-6f);
-            t += -log(xi) / majorant;
-
-            if (t >= t1)
-            break;
-
-            float3 candidatePos = origin + dir * t;
-            float densityModifier = calcDensityModifier(candidatePos);
-            float3 localSigmaT3 = sigmaT3 * densityModifier;
-
-            // Ratio tracking: accumulate the null-collision probability at each interaction
-            // instead of stochastically accepting/rejecting, so a single ray gives a continuous,
-            // low-variance transmittance value rather than an all-or-nothing shadow test.
-            transmittance *= 1.0 - saturate(localSigmaT3 / majorant);
-
-            if (all(transmittance < 1e-3))
-            break;
-        }
-
-        return transmittance;
-    }
+    
 
     void RenderVanilla(HitInfo hitInfo, inout RayState rayState, inout PathRNG rng, in float3 totalRadiance, in float3 directLight, in float3 rayColor, inout float firstHitDist, int bounceCount)
     {
@@ -210,29 +167,71 @@
         GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, objectInstance);
         SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, objectInstance);
         
-        //surfaceInfo.color = pow(surfaceInfo.color, 2.2);
-        
         #if WHITE_FURNACE == 1
             float3 direction = normalize(rayState.rayDesc.Direction);
             float3 V = -direction;
-            float3 N = geometryInfo.geometryNormal;
-            if (dot(N, V) < 0.0) N = -N;
-            N = FixShadingNormal(N, N);
-
-            float3 T, B;
+            float3 N = surfaceInfo.normal;
+            float3 ng = geometryInfo.geometryNormal;
+            // normal flipping 
+            if(dot(ng,V) < 0.0)
+            {
+                ng = -ng;
+            }
+            if(dot(N,V) < 0.0)
+            {
+                N = -N;
+            }
+            N = FixShadingNormal(ng, N);
+            float3 T; float3 B;
             BuildOrthonormalBasis(N, T, B);
-            float3 woLocal = float3(dot(V, T), dot(V, B), dot(V, N));
-            float2 XiDiffuse = NextFloat2(rng);
-            float4 eonSample = sample_EON(woLocal, 1.0, XiDiffuse.x, XiDiffuse.y);
-            float3 wiLocal = eonSample.xyz;
-            float3 nextDirection = normalize(T * wiLocal.x + B * wiLocal.y + N * wiLocal.z);
-            float NdotL = max(dot(N, nextDirection), 0.0);
-            float diffusePdf = max(eonSample.w, 1e-4);
-            float3 whiteBRDF = f_EON(1.0.xxx, 1.0, wiLocal, woLocal, true);
+            float3 tangentView = float3(dot(V, T),dot(V, B),dot(V, N));
 
-            rayState.throughput *= whiteBRDF * NdotL / diffusePdf;
-            rayState.rayDesc.Direction = nextDirection;
-            rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, nextDirection);
+            float3 effectiveH = normalize(lerp(N, N + V, surfaceInfo.roughness * surfaceInfo.roughness));
+            float3 kS = fresnelSchlick(max(dot(V,effectiveH), 0.001), surfaceInfo.F0);
+            
+
+            float specularProbability = saturate(luminance(kS));
+            specularProbability = max(specularProbability, 0.04);
+            specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
+
+            // 3. Roll the dice to pick a lobe
+            float xi_lobe = NextFloat(rng);
+            float3 nextDirection;
+            if (xi_lobe < specularProbability)
+            {
+                // --- EVALUATE SPECULAR PATH ---
+                float2 XiSpecular = NextFloat2(rng);
+                float3 microfacetNormal = SampleVNDFGGX(tangentView, surfaceInfo.roughness * surfaceInfo.roughness, XiSpecular); 
+                float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
+                nextDirection = normalize(tangentReflDir.x * T +tangentReflDir.y * B +tangentReflDir.z * N);
+                float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N); 
+                
+                // Check if the reflected ray goes below the hemisphere
+                if (dot(N, nextDirection) > 0.0)
+                {
+                    float3 specWeight = specularBRDFGGX(N, nextDirection, V, surfaceInfo.F0, H, surfaceInfo.roughness, specularProbability);
+                    rayState.throughput *= specWeight;
+                    rayState.rayDesc.Direction = nextDirection;
+                }
+                else
+                {
+                    rayState.throughput = float3(0.0, 0.0, 0.0); // Absorbed/invalid ray
+                }
+            }
+            else
+            {
+                // --- EVALUATE DIFFUSE PATH ---
+                float2 XiDiffuse = NextFloat2(rng);
+                float3 nextDirection = CosineHemisphereSampling(XiDiffuse, N); 
+                
+                float3 diffWeight = diffuseBRDFHammon(N, nextDirection, V, surfaceInfo.color, surfaceInfo.metalness, surfaceInfo.roughness, surfaceInfo.F0, specularProbability); 
+                
+                rayState.throughput *= diffWeight;
+                rayState.rayDesc.Direction = nextDirection;
+            }
+
+            // 4. Trace the ray onward
+            rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, ng);
             rayState.distance += hitInfo.rayT;
             rayState.motion += surfaceInfo.position - surfaceInfo.prevPosition;
         #else
@@ -242,7 +241,6 @@
             float2 XiSpec = NextFloat2(rng);
             float2 XiDiffuse = NextFloat2(rng);
             float2 XiShadow = NextFloat2(rng);
-            float2 XiSky = NextFloat2(rng);
             float3 sunDir =  getDirectionToSun();
             float3 moonDir = -sunDir;
 
@@ -252,125 +250,27 @@
             float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
             mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
             float3 endTwinSunDir = END_TWIN_SUN_DIRECTION;
-            if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
+            float3 direction = normalize(rayState.rayDesc.Direction);
+            float flatPlaneY = surfaceInfo.position.y;
 
-                surfaceInfo.roughness = 0.035;
-                surfaceInfo.metalness = 0.0;
-
-                const float waveSmoothness = WAVE_SMOOTHING;
-                const float waveStrength = WAVE_INTENSITY;
-
-                float3 worldPos = surfaceInfo.position - g_view.waveWorksOriginInSteveSpace;
-
-                // Calculate distance BEFORE wrapping the position
-                float2 playerXZ = g_view.viewOriginSteveSpace.xz;
-                float2 waterXZ = surfaceInfo.position.xz;
-                float distanceFromPlayer = length(waterXZ - playerXZ);
-
-                // Bedrock may reset position every 1024 blocks
-                worldPos = worldPos - floor(worldPos / 1024.0) * 1024.0;
-
-                float waveFade = 1.0 - smoothstep(WAVE_FADE_START, WAVE_FADE_END, distanceFromPlayer);
-
-                float3 flatNormal = geometryInfo.geometryNormal;
-                float3 waveNorm = waveNormal(worldPos.xz, waveSmoothness, waveStrength);
-
-                // Fade waves out with distance
-                float fade = 1.15 - exp(-distanceFromPlayer / 32);
-
-                surfaceInfo.normal = normalize(lerp(flatNormal, waveNorm, waveFade));
-                surfaceInfo.roughness = lerp(0.235, surfaceInfo.roughness, waveFade);
-
-                // ------------------------------------------------------------
-                // Procedural water height parallax
-                // ------------------------------------------------------------
-
-                float3 viewDir = normalize(g_view.viewOriginSteveSpace - surfaceInfo.position);
-
-                float baseWaterY = surfaceInfo.position.y;
-
-                // Maximum vertical displacement of the procedural surface.
-                float heightRange = abs(waveStrength) * waveFade;
-
-                // Search around the original geometric water hit.
-                float tMin = -heightRange;
-                float tMax =  heightRange;
-
-                float3 p0 = surfaceInfo.position + viewDir * tMin;
-                float3 p1 = surfaceInfo.position + viewDir * tMax;
-
-                float2 p0XZ = p0.xz - g_view.waveWorksOriginInSteveSpace.xz;
-                float2 p1XZ = p1.xz - g_view.waveWorksOriginInSteveSpace.xz;
-
-                p0XZ -= floor(p0XZ / 1024.0) * 1024.0;
-                p1XZ -= floor(p1XZ / 1024.0) * 1024.0;
-
-                float h0 = getwaves(p0XZ, WAVE_OCTAVES) * waveStrength * waveFade;
-                float h1 = getwaves(p1XZ, WAVE_OCTAVES) * waveStrength * waveFade;
-
-                float f0 = p0.y - baseWaterY - h0;
-                float f1 = p1.y - baseWaterY - h1;
-
-                // Only refine if the ray actually crosses the procedural surface.
-                if (f0 * f1 <= 0.0)
-                {
-                    float3 parallaxPos = surfaceInfo.position;
-
-                    // A few binary-search iterations are enough because the
-                    // procedural surface is already bounded to a small region.
-                    float a = tMin;
-                    float b = tMax;
-
-                    for (int i = 0; i < 5; ++i)
-                    {
-                        float t = (a + b) * 0.5;
-
-                        float3 p = surfaceInfo.position + viewDir * t;
-
-                        float2 wavePos = p.xz - g_view.waveWorksOriginInSteveSpace.xz;
-                        wavePos -= floor(wavePos / 1024.0) * 1024.0;
-
-                        float waveHeight =
-                        getwaves(wavePos, WAVE_OCTAVES) *
-                        waveStrength *
-                        waveFade;
-
-                        float f = p.y - baseWaterY - waveHeight;
-
-                        if ((f > 0.0) == (f0 > 0.0))
-                        {
-                            a = t;
-                            f0 = f;
-                        }
-                        else
-                        {
-                            b = t;
-                            f1 = f;
-                        }
-                    }
-
-                    float t = (a + b) * 0.5;
-                    parallaxPos = surfaceInfo.position + viewDir * t;
-
-                    // Displaced position can now be used by water shading.
-                    // Keep surfaceInfo.position untouched for now.
-                }
+            float parallaxHeight = 0.0f;
+            if (hitInfo.materialType == MATERIAL_TYPE_WATER) 
+            {
+                WaterMaterial waterMat;
+                waterMat.SetUp(surfaceInfo, geometryInfo, direction, bounceCount, firstHitDist, parallaxHeight);
             }
 
             bool isCloud = objectInstance.flags & kObjectInstanceFlagClouds;
             if (hitInfo.materialType == MATERIAL_TYPE_OPAQUE || hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST) surfaceInfo.alpha = 1;
 
-            
-
             float NdotL = max(dot(surfaceInfo.normal, mainLightDir),0.0001);
 
             bool didReflect = false;
-            float3 direction = normalize(rayState.rayDesc.Direction);
             float3 nextDirection;
             float3 N = surfaceInfo.normal;
             float3 V = -direction;
             float3 ng = geometryInfo.geometryNormal;
-            
+            // normal flipping 
             if(dot(ng,V) < 0.0)
             {
                 ng = -ng;
@@ -379,16 +279,13 @@
             {
                 N = -N;
             }
-            float3 T;
-            float3 B;
             N = FixShadingNormal(ng, N);
+            float3 T; float3 B;
             BuildOrthonormalBasis(N, T, B);
             float3 tangentView = float3(dot(V, T),dot(V, B),dot(V, N));
-            //surfaceInfo.roughness = lerp(surfaceInfo.roughness, surfaceInfo.roughness * 0.3, g_view.rainLevel);
-            
-            
+
             bool isWater = hitInfo.materialType == MATERIAL_TYPE_WATER;
-            float3 F0 = isWater ? 0.02.xxx : lerp(float3(0.04, 0.04, 0.04), surfaceInfo.color, surfaceInfo.metalness); 
+            float3 F0 = surfaceInfo.F0; 
             
             #if DO_RAIN_WETNESS
                 float rainLevel = getBiomeAdjustedRainLevel();
@@ -403,18 +300,6 @@
                     float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
 
                     float3 rainSampleDir = normalize(float3(cos(phi) * sinTheta,cosTheta,sin(phi) * sinTheta));
-
-                    float puddleLarge = PuddleNoise(surfaceInfo.position.xz * 0.05);
-                    float puddleSmall = PuddleNoise(surfaceInfo.position.xz * 0.15);
-
-                    float puddleNoise = puddleLarge * 0.75 + puddleSmall * 0.25;
-
-                    float puddleMask = smoothstep(0.58, 0.72, puddleNoise);
-                    float horizontalness = saturate(dot(ng, float3(0.0, 1.0, 0.0)));
-                    horizontalness = smoothstep(0.7, 0.95, horizontalness);
-
-                    
-
                     // Set up the ray
                     shadowPayload rainOcclusion;
                     RayDesc rainSampleRay;
@@ -427,28 +312,22 @@
 
                     surfaceInfo.roughness = lerp(surfaceInfo.roughness, 0.0, rainLevel *  (float)rainOcclusion.transmission);
                     N = lerp(N, ng, rainLevel * (float)rainOcclusion.transmission);
-                }
-                
-                
-                
-                
+                } 
             #endif
 
             float roughness = max(surfaceInfo.roughness * surfaceInfo.roughness, 0.0);
-
             float3 effectiveH = normalize(lerp(N, N + V, surfaceInfo.roughness * surfaceInfo.roughness));
             float3 kS = fresnelSchlick(max(dot(V,effectiveH), 0.001), F0);
             
 
             float specularProbability = saturate(luminance(kS));
-
             specularProbability = max(specularProbability, 0.04);
-
-            specularProbability = min(specularProbability, 1.0);
             specularProbability = lerp(specularProbability, 1.0, surfaceInfo.metalness);
 
-            float3 throughput = 1.0; 
-            bool isTransparentSurface = hitInfo.materialType == MATERIAL_TYPE_WATER || hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND; 
+            float alphaBlendOpacity = saturate(surfaceInfo.alpha);
+            bool isFullyOpaqueAlphaBlend = hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && surfaceInfo.alpha >= 0.9999f;
+            bool isTransparentSurface = hitInfo.materialType == MATERIAL_TYPE_WATER || (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !isFullyOpaqueAlphaBlend);
+            float directDiffuseWeight = isTransparentSurface ? 0.0f : 1.0f;
             bool rayRefractedGoesInside = false;
 
             // Volumetric SSS: model the material as a dielectric boundary around a participating
@@ -456,81 +335,90 @@
             // transport inside both solid blocks and alpha-test geometry.
             const float SSS_IOR = 1.4;
             bool isAlphaTest = hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST;
-            float mfp = isAlphaTest ? 0.05 : 0.35; // Mean free path in voxels
+            float mfp = isAlphaTest ? 0.05 : 0.18; // Mean free path in voxels
             bool isSSSVolume = surfaceInfo.subsurface > 0.0 && !isCloud && !isTransparentSurface && (hitInfo.materialType == MATERIAL_TYPE_OPAQUE || hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST);
             float3 sssShadowSigmaT = isSSSVolume ? 1.0 / max(mfp * surfaceInfo.subsurface, 1e-3) : 0.0;
 
             // Split non-specular energy between volumetric SSS and standard diffuse reflection.
             // For thin alpha-test geometry (leaves, grass), cap SSS branching probability so rays
             // consistently diffuse-bounce and gather indirect ambient skylight in shadows.
-            float sssMaxProb =  0.65;
-            float sssProbability = isSSSVolume ? (1.0 - specularProbability) * saturate(surfaceInfo.subsurface * sssMaxProb) : 0.0;
-            float diffuseProbability = max((1.0 - specularProbability), 0.0);
+            
+            float sssMaxProb =  saturate(surfaceInfo.subsurface * 0.65);
+            float sssProbability = isSSSVolume ? (1.0 - specularProbability) * sssMaxProb : 0.0;
+            float diffuseProbability = isTransparentSurface ? 0.0f : max((1.0 - specularProbability), 0.0);
 
             if (isTransparentSurface && !isCloud) {
-                
-                float3 F_smooth = fresnelSchlick(max(dot(N, -direction), 0.0f), F0); 
-                float F_lum = clamp(luminance(F_smooth), 0.02f, 0.98f); 
+                // Determine incident and transmitted media indices of refraction (IOR)
+                float ambientIOR = rayState.hitWater ? 1.333f : 1.0f;
+                float surfaceIOR = isWater ? 1.333f : 1.5f;
+                float eta = hitInfo.frontFacing ? (1.0 / surfaceIOR) : (surfaceIOR / 1.0);
 
-                float specularProbability = F_lum; 
-                float transmissionProbability = 1.0f - specularProbability; 
+                // Sample microfacet normal with GGX VNDF
+                float alpha = max(roughness, 0.0001f);
+                float3 microfacetNormalTS = SampleVNDFGGX(tangentView, alpha, XiSpec);
+                float3 microfacetNormal = normalize(microfacetNormalTS.x * T + microfacetNormalTS.y * B + microfacetNormalTS.z * N);
+
+                // Exact physical dielectric Fresnel (air <-> dielectric in both directions, with exact TIR)
+                float cosThetaI = max(dot(V, microfacetNormal), 0.0f);
+                float cosThetaT;
+                float F_diel = DielectricFresnel(cosThetaI, eta, cosThetaT);
+
+                // Pure dielectric split: specular reflection (F) vs specular/microfacet transmission (1 - F)
+                specularProbability = clamp(F_diel, 0.02f, 1.0f);
+                float transmissionProbability = 1.0f - specularProbability;
+                diffuseProbability = 0.0f;
 
                 if (Xi.x < specularProbability) { 
-                    
-                    float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
-                    float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
-                    nextDirection = normalize(tangentReflDir.x * T + tangentReflDir.y * B + tangentReflDir.z * N); 
-                    
-                    float rawNdotL = dot(N, nextDirection);
-                    if (rawNdotL <= 0.0)
+                    float3 reflDir = reflect(-V, microfacetNormal);
+                    if (dot(N, reflDir) <= 0.0f)
                     {
-                        rayColor = 0.0;
-                        nextDirection = N;
+                        reflDir = normalize(reflDir - 2.0f * dot(N, reflDir) * N);
                     }
+                    nextDirection = reflDir;
                     
-                    float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N); 
-                    float NdotL = max(dot(N, nextDirection), 0.0001f); 
-                    float NdotV = max(dot(N, V), 0.0001f); 
-                    float NdotH = max(dot(N, H), 0.0001f); 
-                    float VdotH = max(dot(V, H), 0.0001f); 
-                    
-                    float3 F = fresnelSchlick(VdotH, F0); 
-                    float D = D_GGX(NdotH, surfaceInfo.roughness); 
-                    float G = G_Smith(NdotV, NdotL, surfaceInfo.roughness); 
-                    float3 specWeight = (F * D * G) / (4.0f * NdotV * NdotL) + FdezAgueraMultipleScattering(NdotV, NdotL, surfaceInfo.roughness, F0);
-                    
-                    float pdf_r = PDF_GGX_Reflection(NdotV, NdotH, VdotH, surfaceInfo.roughness); 
-                    float combinedPdf = max(pdf_r, 1e-6f); 
-                    
-                    
-                    rayColor *= (specWeight * NdotL) / (combinedPdf * specularProbability); 
+                    // Exact analytical VNDF reflection weight: cancels D and 4*NdotV*NdotL
+                    float NdotL = max(dot(N, nextDirection), 0.0001f);
+                    float G1_L = G1_SmithGGX(NdotL, surfaceInfo.roughness);
+                    float3 weight = (F_diel / specularProbability) * G1_L;
+                    rayColor *= weight;
+                }
+                else
+                { 
+                    float3 wi = refract(direction, microfacetNormal, eta);
 
-                    } else { 
-                    
-                    float IOR = isWater ? 1.333f : 1.5f; 
-                    float3 refractionNormal = N; 
-                    float eta = 1.0f / IOR; 
-
-                    if (!hitInfo.frontFacing) { 
-                        eta = IOR / 1.0f; 
-                    } 
-
-                    float3 refracted = refract(direction, refractionNormal, eta); 
-
-                    if (length(refracted) == 0.0f) { 
-                        nextDirection = reflect(direction, refractionNormal); 
-                        
-                        rayColor *= (float3(1.0f, 1.0f, 1.0f) / max(transmissionProbability, 1e-4f));
-
-                        } else { 
-                        nextDirection = refracted; 
-                        float3 transmissionWeight = (1.0f - F_smooth);
-                        float transparency = 1.0f - saturate(surfaceInfo.alpha);
-                        // check opacity, if it is at 1, dont change it or else we get black surfaces.
-                        if(surfaceInfo.alpha == 1) transparency = 1.0;
-                        float3 tint = transmissionWeight * surfaceInfo.color * transparency;
-                        rayColor *= tint / max(transmissionProbability, 1e-4f);
+                    // If total internal reflection on the microfacet (or numerical failure):
+                    if (dot(wi, wi) < 1e-6f)
+                    {
+                        // Reflect off the microfacet with roughness preserved
+                        float3 reflDir = reflect(-V, microfacetNormal);
+                        if (dot(N, reflDir) <= 0.0f)
+                        {
+                            reflDir = normalize(reflDir - 2.0f * dot(N, reflDir) * N);
+                        }
+                        nextDirection = reflDir;
                     }
+                    else
+                    {
+                        // If the microfacet refracted ray points into the upper hemisphere:
+                        if (dot(N, wi) >= 0.0f)
+                        {
+                            wi = normalize(wi - 2.0f * dot(N, wi) * N);
+                        }
+                        nextDirection = normalize(wi);
+                    }
+
+                    float NdotI = max(abs(dot(N, nextDirection)), 0.0001f);
+                    float G1_wi = G1_SmithGGX(NdotI, surfaceInfo.roughness);
+
+                    float3 transmissionTint = isWater
+                    ? surfaceInfo.color
+                    : GetAlphaBlendTransmissionTint(surfaceInfo.color);
+
+                    // Exact analytical VNDF transmission weight: cancels D, Jacobian, and geometric factors
+                    float3 weight = ((1.0f - F_diel) / max(transmissionProbability, 1e-4f)) * transmissionTint * G1_wi;
+
+
+                    rayColor *= weight;
                 }
             }
             else if (Xi.x < specularProbability)
@@ -538,32 +426,8 @@
                 float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
                 float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
                 nextDirection = normalize(tangentReflDir.x * T +tangentReflDir.y * B +tangentReflDir.z * N);
-                float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N);
-                float rawNdotL = dot(N, nextDirection);
-                if (rawNdotL <= 0.0)
-                {
-                    // VNDF samples can reflect below the macrosurface near the horizon.
-                    // Such a direction has no valid reflection contribution; terminate this
-                    // continuation instead of clamping its cosine and creating a huge weight.
-                    rayColor = 0.0;
-                    nextDirection = N;
-                }
-                float NdotL = max(dot(N, nextDirection), 0.0001); 
-                float NdotV = max(dot(N, V), 0.0001); 
-                float NdotH = max(dot(N, H), 0.0001);
-                float VdotH = max(dot(V, H), 0.0001); 
-                float LdotH = max(dot(nextDirection,H), 0.001);
-
-                float3 F = fresnelSchlick(VdotH, F0); 
-                float D = D_GGX(NdotH, surfaceInfo.roughness);
-                float G = G_Smith(NdotV, NdotL, surfaceInfo.roughness); 
-                float3 specWeight = (F * D * G) / (4.0 * NdotV * NdotL) + FdezAgueraMultipleScattering(NdotV, NdotL, surfaceInfo.roughness, F0);
-                
-                float pdf_r = PDF_GGX_Reflection(NdotV, NdotH, VdotH, surfaceInfo.roughness); 
-                float combinedPdf = max(pdf_r, 1e-6); 
-                
-                rayColor *= (specWeight * NdotL) /
-                (combinedPdf * specularProbability);
+                float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N); 
+                rayColor *= specularBRDFGGX(N, nextDirection, V, F0,H, surfaceInfo.roughness, specularProbability);
             }
             else if (Xi.x < specularProbability + sssProbability)
             {
@@ -591,8 +455,8 @@
                     {
                         float3 sigma_t = 1.0 / max(mfp, 1e-3);
                         rayState.sssSigmaT = sigma_t;
-                        rayState.sssSigmaS = sigma_t * max(surfaceInfo.color * surfaceInfo.subsurface, sssMaxProb);
-                        rayState.sssMediumThickness = isAlphaTest ? 0.05 : 1.0;
+                        rayState.sssSigmaS = sigma_t * max(surfaceInfo.color * surfaceInfo.subsurface, saturate(1 - surfaceInfo.subsurface));
+                        rayState.sssMediumThickness = isAlphaTest ? 0.1 : 1.0;
                     }
                 }
             }
@@ -621,32 +485,19 @@
                     float VdotH_d = max(dot(V, H), 0.0001);
                     float LdotH = max(dot(nextDirection,H), 0.001);
                     float3 rho = surfaceInfo.color * (1.0 - surfaceInfo.metalness);
-                    float3 diffuseBRDF = f_EON(rho, surfaceInfo.roughness, wi_local, wo_local, USE_ACCURATE_DIFFUSE_BRDF); 
+                    float3 F = fresnelSchlick(LdotH, 0.04);
+                    float3 diffuseBRDF = (1.0 - F) * f_EON(rho, surfaceInfo.roughness, wi_local, wo_local, USE_ACCURATE_DIFFUSE_BRDF); 
                     
                     float3 weight_d = ((diffuseBRDF * NdotL_d) / (localDiffusePdf * max(diffuseProbability, 1e-4))); 
 
                     rayColor *= weight_d; 
+                #elif DIFFUSE_METHOD == 2
+                    nextDirection = CosineHemisphereSampling(XiDiffuse, N); 
+                    rayColor *= diffuseBRDFHammonConserving(N, nextDirection, V, surfaceInfo.color, surfaceInfo.metalness,surfaceInfo.roughness, surfaceInfo.F0, specularProbability); 
                 #else
-                    nextDirection = CosineHemisphereSampling(XiDiffuse, surfaceInfo.normal); 
-                    
-                    float NdotL_d = max(dot(N, nextDirection), 0.0001); 
-                    float NdotV_d = max(dot(N, V), 0.0001); 
-                    float3 H = normalize(V + nextDirection); 
-                    float VdotH_d = max(dot(V, H), 0.0001); 
-                    float LdotH = max(dot(nextDirection,H), 0.001);
-                    float3 F = fresnelSchlick(VdotH_d, 0.04); 
-                    
-                    float diffMultiplier = 1 / PI ; 
-                    float3 kD = (1.0 - F) * (1.0 - surfaceInfo.metalness);
-                    float3 diffuseBRDF = surfaceInfo.color * (diffMultiplier); 
-                    
-                    float localDiffusePdf = max(PDF_CosineHemisphere(NdotL_d), 1e-4); 
-                    
-                    float diffProb = 1.0 - specularProbability;
-                    float3 weight_d = ((diffuseBRDF * NdotL_d) / (localDiffusePdf * max(diffProb, 1e-4))); 
-
-                    rayColor *= weight_d; 
-
+                    // Default to Lambertian if no method is specified
+                    nextDirection = CosineHemisphereSampling(XiDiffuse, N); 
+                    rayColor *= diffuseBRDFLambert(N, nextDirection, V, surfaceInfo.color, surfaceInfo.metalness,surfaceInfo.roughness, surfaceInfo.F0, specularProbability); 
                 #endif
             }
 
@@ -655,149 +506,19 @@
 
             float sunRadius = inEnd ? END_SUN_RADIUS : SUN_RADIUS;
 
-            shadowPayload payload;
-            RayDesc shadowRay;
-            shadowRay.Origin = offset_ray(surfaceInfo.position, ng);
-            shadowRay.Direction = randConeJitter(mainLightDir, sunRadius, XiShadow);
-            shadowRay.TMin = 0.0;
-            shadowRay.TMax = 1000;
+            float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0));
+
+            float sunEv = 1.0 * exp2(sunColor.a * SUN_INTENSITY);
             
-            TraceShadowRay(shadowRay, payload);
+            DirectLight light = sampleDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, surfaceInfo, N, ng, V, directDiffuseWeight, rng);
+
+            totalRadiance += light.radiance;
             
-
-            float3 twinSunContribution = 0;
-            #if USE_END_TWIN_SUNS
-                #if ENABLE_END_SUNLIGHT
-                    if(inEnd)
-                    {
-                        shadowPayload payloadTwinSun;
-                        RayDesc shadowRayTwinSun;
-                        shadowRayTwinSun.Origin = offset_ray(surfaceInfo.position, ng);
-                        shadowRayTwinSun.Direction = randConeJitter(endTwinSunDir, END_TWIN_SUN_RADIUS, XiShadow);
-                        shadowRayTwinSun.TMin = 0.0;
-                        shadowRayTwinSun.TMax = 1000;
-                        TraceShadowRay(shadowRayTwinSun, payloadTwinSun);
-
-
-                        float3 L1 = normalize(shadowRayTwinSun.Direction);
-                        float3 H2 = normalize(L1 + V);
-
-                        float NdotL2 = max(dot(N, L1), 0.0001);
-                        float NdotV1 = max(dot(N, V), 0.0001);
-                        float NdotH1 = max(dot(N, H2), 0.0001);
-                        float VdotH2 = max(dot(V, H2), 0.0001);
-                        
-
-                        float3 F = fresnelSchlick(VdotH2, F0);
-                        float3 V_local =float3(dot(V,T), dot(V,B), dot(V,N));
-                        float3 L_local =float3(dot(L1,T), dot(L1,B), dot(L1,N));
-
-                        float D1 = D_GGX(NdotH1, surfaceInfo.roughness);
-                        float G1 = G_Smith(NdotV1, NdotL2, surfaceInfo.roughness); 
-                        float3 specular = (F * D1 * G1) / (4.0 * NdotV1 * NdotL2);
-                        float3 rho1 = surfaceInfo.color * (1.0f - surfaceInfo.metalness);
-                        float3 eonBRDF = f_EON(rho1, surfaceInfo.roughness, L_local, V_local, USE_ACCURATE_DIFFUSE_BRDF);
-                        float3 diffuse = (1.0f - F) * eonBRDF;
-                        float3 brdf = isTransparentSurface ? specular : diffuse + specular;
-                        float3 twinSunColor = END_TWIN_SUN_COLOR.rgb * END_TWIN_SUN_INTENSITY;
-                        float pdfSun = max(PDF_twinSunCone(), 1e-4);
-                        twinSunContribution = twinSunColor.rgb * brdf * saturate(NdotL2) * payloadTwinSun.transmission * GetAtmosphereSunTransmittance(surfaceInfo.position, shadowRayTwinSun.Direction, rng, bounceCount == 0 ? 16 : 4) * throughput / pdfSun;
-                        // Replace standard cosine hemisphere PDF with the exact EON PDF matching your sampler
-                        float pdfDiffuse = max(pdf_EON(V_local, L_local, surfaceInfo.roughness), 1e-4);
-                        
-                        float pdfSpec = PDF_GGX_Reflection(NdotV1, NdotH1, VdotH2, surfaceInfo.roughness);
-                        float pdfBRDF = specularProbability * pdfSpec + diffuseProbability * pdfDiffuse;
-                        float w = MISWeight(pdfSun, pdfBRDF);
-                        twinSunContribution *= w;
-                    }
-                #endif
-            #endif
-
-            float3 L = normalize(shadowRay.Direction);
-            float3 H1 = normalize(L + V);
-
-            float NdotL1 = max(dot(N, L), 0.0001);
-            float NdotV = max(dot(N, V), 0.0001);
-            float NdotH = max(dot(N, H1), 0.0001);
-            float VdotH1 = max(dot(V, H1), 0.0001);
-            float LdotH = max(dot(L, H1), 0.001);
-
-            float3 F = fresnelSchlick(VdotH1, F0);
-            float3 V_local =float3(dot(V,T), dot(V,B), dot(V,N));
-            float3 L_local =float3(dot(L,T), dot(L,B), dot(L,N));
-
-            float D = D_GGX(NdotH, surfaceInfo.roughness);
-            float G = G_Smith(NdotV, NdotL1, surfaceInfo.roughness); 
-            float3 specular = (F * D * G) / (4.0 * NdotV * NdotL1);
-            float3 rho = surfaceInfo.color * (1.0f - surfaceInfo.metalness);
-            float3 eonBRDF = f_EON(rho, surfaceInfo.roughness, L_local, V_local, USE_ACCURATE_DIFFUSE_BRDF);
-            float3 diffuse = (1.0f - F) * eonBRDF;
-            float3 brdf = isTransparentSurface ? specular : diffuse + specular;
-            float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 580 * SUN_INTENSITY;
-            sunlightColor.rgb *= sunlightColor.a;
-            //sunlightColor = lerp(sunlightColor, sunlightColor * RAIN_SUN_INTENSITY_MULTIPLIER, getBiomeAdjustedRainLevel());
-
-            if(inEnd) 
-            {
-                sunlightColor.rgb = END_SUN_COLOR.rgb * END_SUN_INTENSITY;
-                #if ENABLE_END_SUNLIGHT == 0
-                    sunlightColor.rgb = 0;
-                #endif
-
-            }
-            
-            if(inNether) sunlightColor = 0;
-
-            float pdfSun = max(PDF_SunCone(), 1e-4);
-
-            // Shared with RenderRay's delta-tracking atmosphere pass so direct sunlight dims by
-            // the same fog the path tracer actually walked through.
-            float3 sunFogTransmittance = GetAtmosphereSunTransmittance(surfaceInfo.position, shadowRay.Direction, rng, 4);
-
-            float3 sunContribution = sunlightColor.rgb * brdf * saturate(NdotL1) * payload.transmission * sunFogTransmittance * throughput / pdfSun;
-            // Replace standard cosine hemisphere PDF with the exact EON PDF matching your sampler
-            float pdfDiffuse = max(pdf_EON(V_local, L_local, surfaceInfo.roughness), 1e-4);
-            
-            float pdfSpec = PDF_GGX_Reflection(NdotV, NdotH, VdotH1, surfaceInfo.roughness);
-            float pdfBRDF = specularProbability * pdfSpec + diffuseProbability * pdfDiffuse;
-            float w = MISWeight(pdfSun, pdfBRDF);
-
-            #if ENABLE_SUNLIGHT == 0
-                sunContribution = 0;
-            #endif
-
-            
-            totalRadiance += sunContribution * w;
-            
-            
+            /*
             if (g_view.cpuLightsCount > 0)
             {
                 uint lightCount = min(g_view.cpuLightsCount, 98304u);
 
-                // RIS: stream a handful of uniformly-picked candidate lights through a reservoir,
-                // weighted by a cheap unshadowed-diffuse estimate, and only trace one shadow ray
-                // for the winner. This concentrates shadow rays on lights likely to matter.
-                Reservoir lightReservoir;
-                InitReservoir(lightReservoir);
-
-                uint candidateCount = min((uint)(bounceCount == 0 ? RIS_LIGHT_CANDIDATE_COUNT : RIS_LIGHT_CANDIDATE_COUNT_INDIRECT), lightCount);
-                for (uint c = 0; c < candidateCount; c++)
-                {
-                    uint candidateIndex = min(uint(NextFloat(rng) * lightCount), lightCount - 1u);
-                    LightInfo candidateInfo = inputLightsBuffer[candidateIndex];
-                    LightData candidateData = UnpackLight(candidateInfo.packedData);
-
-                    float3 toCandidate = candidateInfo.position - surfaceInfo.position;
-                    float candidateDistSq = max(dot(toCandidate, toCandidate), 1e-4);
-                    float candidateNdotLight = max(dot(N, toCandidate * rsqrt(candidateDistSq)), 0.0);
-
-                    // p_hat: unshadowed diffuse contribution estimate. sourcePdf is uniform (1/lightCount),
-                    // so risWeight = p_hat * lightCount.
-                    float pHat = luminance(candidateData.color) * candidateData.intensity * 300.0 * candidateNdotLight / candidateDistSq;
-                    float risWeight = pHat * float(lightCount);
-
-                    UpdateReservoir(lightReservoir, candidateIndex, risWeight, rng);
-                }
 
                 uint lightIndex = lightReservoir.sampleIndex;
                 LightInfo lightInfo = inputLightsBuffer[lightIndex];
@@ -812,7 +533,7 @@
                 if (NdotLight > 0.0 && lightReservoir.weightSum > 0.0)
                 {
                     float lightDistanceSqClamped = max(lightDistanceSquared, 1e-4);
-                    float pHatSelected = luminance(lightData.color) * lightData.intensity * 300.0 * NdotLight / lightDistanceSqClamped;
+                    float pHatSelected = luminance(lightData.color) * lightData.intensity * POINT_LIGHT_INTENSITY * NdotLight / lightDistanceSqClamped;
                     FinalizeReservoir(lightReservoir, pHatSelected);
                     float estimatedRadiance = pHatSelected * lightReservoir.W;
 
@@ -858,7 +579,7 @@
                         
                         lightShadowTransmission /= float(POINT_LIGHT_SHADOW_SAMPLES);
 
-                        float3 lightRadiance = lightData.color * lightData.intensity * 700;
+                        float3 lightRadiance = lightData.color * lightData.intensity * POINT_LIGHT_INTENSITY;
                         lightRadiance *= NdotLight / lightDistanceSqClamped;
                         lightRadiance *= lightShadowTransmission;
                         lightRadiance *= lightBRDF;
@@ -867,14 +588,13 @@
                     }
                 }
             }
-            
-
-            
-
-            totalRadiance += twinSunContribution;
+            */
 
             // Apply emissive lighting.
-            float3 emission = surfaceInfo.color * surfaceInfo.emissive * EMISSION_STENGTH;
+            // TODO, move this to surface Info later
+            float3 emissiveColor = surfaceInfo.color;
+            float emissionEV = 1.0 * exp2(5.5);
+            float3 emission = emissiveColor * surfaceInfo.emissive * emissionEV;
             totalRadiance += emission;
 
             uint mediaType = objectInstance.offsetPack5 >> 8; // See MEDIA_TYPE macros in Constants.hlsl.
@@ -892,8 +612,6 @@
             if (objectInstance.flags & kObjectInstanceFlagGlint)
             totalRadiance += (sin(3.0 * g_view.time) * 0.5 + 0.5) * (float3(077, 23, 255) / 255.0);
 
-            float luma = dot(totalRadiance, float3(0.2126, 0.7152, 0.0722));
-            //if (luma > 10.0) totalRadiance *= 10.0 / luma;
 
             if (any(isnan(rayState.throughput)) || any(isinf(rayState.throughput)))
             return;
@@ -908,16 +626,30 @@
             return;
             
             
+            #if ENABLE_WATER_PARALLAX
+                if (hitInfo.materialType == MATERIAL_TYPE_WATER)
+                {
+                    if (dot(nextDirection, geometryInfo.geometryNormal) > 0.0f)
+                    {
+                        surfaceInfo.position.y = max(surfaceInfo.position.y, flatPlaneY);
+                    }
+                    else
+                    {
+                        surfaceInfo.position.y = min(surfaceInfo.position.y, flatPlaneY);
+                    }
+                }
+            #endif
+            
             rayState.color += totalRadiance * rayState.throughput;
             rayState.throughput *= rayColor  * transmission;
             rayState.rayDesc.Direction = nextDirection; 
+            if (dot(nextDirection, ng) < 0.0 && isTransparentSurface) ng = -ng;
             rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, ng);
 
-            
-            
+
 
             // Update other ray properties
-            rayState.distance += hitInfo.rayT;
+            rayState.distance += hitInfo.rayT + parallaxHeight;
             rayState.motion += surfaceInfo.position - surfaceInfo.prevPosition;
         #endif
     }
@@ -929,6 +661,7 @@
         RayQuery<RAY_FLAG_NONE> q;
         RayState rayState;
         rayState.Init();
+        rayState.hitWater = g_view.cameraIsUnderWater;
         rayState.rayDesc = rayDesc;
         PathRNG rng;
 
@@ -989,7 +722,7 @@
             {
                 float atmosphereT0;
                 float atmosphereT1;
-                float ATMOSPHERE_RADIUS = 350.0f;
+                float ATMOSPHERE_RADIUS = 550.0f;
 
                 if (RaySphereIntersect(
                 rayState.rayDesc.Origin,
@@ -1011,15 +744,15 @@
                 #else
                     sigmaS3 = getScattering();
                 #endif
-
+                bool inWater = g_view.cameraIsUnderWater;
                 sigmaT3 =
                 inEnd ?
                 getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY :
-                getMediaPrimaryExtinction();
+                inWater ?  getMediaPrimaryExtinction() * 0.16 : getMediaPrimaryExtinction();
 
                 sigmaT3 = lerp(
                 sigmaT3,
-                float3(0.0225, 0.0225, 0.0225),
+                float3(0.0125, 0.0125, 0.0125),
                 getBiomeAdjustedRainLevel());
             }
 
@@ -1042,7 +775,7 @@
                 majorant = max(majorant, 1e-6f);
 
                 float t = volumeStart;
-                const int kMaxDeltaTrackingSteps = 4;
+                const int kMaxDeltaTrackingSteps = 5;
                 int deltaSteps = 0;
 
                 while (deltaSteps++ < kMaxDeltaTrackingSteps)
@@ -1094,73 +827,19 @@
                 float3 scatterWeight =
                 sigmaS / max(sigmaT, 1e-6);
 
-                float4 sunlightColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) * 350 * SUN_INTENSITY; 
-                sunlightColor.rgb *= sunlightColor.a;
-                //sunlightColor = lerp(sunlightColor, sunlightColor * RAIN_SUN_INTENSITY_MULTIPLIER, getBiomeAdjustedRainLevel());
-                if(inEnd) sunlightColor.rgb = END_SUN_COLOR.rgb * END_SUN_INTENSITY;
-                if(inNether) sunlightColor =0;
-                float pdfSun = max(PDF_SunCone(), 1e-4);
                 
-                float3 sunContribution = sunlightColor.rgb * (rayState.inSSSMedium ? 4.0 : 1.0);
                 
-                sunContribution /= pdfSun;
                 float sunRadius = inEnd ? END_SUN_RADIUS : SUN_RADIUS;
-                shadowPayload payload; 
-                RayDesc shadowRay; 
                 
-                shadowRay.Direction = randConeJitter(mainLightDir, sunRadius, NextFloat2(rng)); 
-                shadowRay.Origin = offset_ray(scatterPos, shadowRay.Direction); 
-                shadowRay.TMin = 0.0; 
-                shadowRay.TMax = 1000; 
-                if (rayState.inSSSMedium)
-                {
-                    TraceSSSShadowRay(shadowRay, rayState.sssSigmaT, payload);
-                }
-                else
-                {
-                    TraceShadowRay(shadowRay, payload); 
-                }
+                float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0));
+                float sunEv = rayState.inSSSMedium ?  6.0 * exp2(sunColor.a * SUN_INTENSITY) : 1.0 * exp2(sunColor.a * SUN_INTENSITY) ;
+                DirectLight light = sampleVolumetricDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, scatterPos, rayState.rayDesc.Direction, rng);
 
-                // TraceSSSShadowRay only attenuates through the medium's own walls -- once it
-                // reaches open sky it still needs to dim by the outdoor atmosphere fog, same as
-                // any other direct sunlight, or SSS surfaces (grass/sand) glow through fog unabated.
-                float3 sunFogTransmittance = GetAtmosphereSunTransmittance(scatterPos, shadowRay.Direction, rng, i == 0 ? 4 : 4);
-
-                float3 twinSunContribution = 0;
-
-                #if USE_END_TWIN_SUNS
-                    #if ENABLE_END_SUNLIGHT
-                        if(inEnd)
-                        {
-                            float3 sunlightColor = END_TWIN_SUN_COLOR * END_TWIN_SUN_INTENSITY; 
-                            float pdfSun = max(PDF_twinSunCone(), 1e-4);
-                            
-                            float3 sunContribution = sunlightColor.rgb * 3.2;
-                            
-                            sunContribution /= pdfSun;
-                            float sunRadius = END_TWIN_SUN_RADIUS;
-                            shadowPayload payload; 
-                            RayDesc shadowRay; 
-                            
-                            shadowRay.Direction = randConeJitter(endTwinSunDir, sunRadius, NextFloat2(rng)); 
-                            shadowRay.Origin = offset_ray(scatterPos, shadowRay.Direction); 
-                            shadowRay.TMin = 0.0; 
-                            shadowRay.TMax = 1000; 
-                            TraceShadowRay(shadowRay, payload); 
-                            float VdotL = dot(rayState.rayDesc.Direction, shadowRay.Direction);
-                            float g =  0.61; // Forward-scattering fog.
-                            float sunPhase = PhaseDraine(VdotL, g, DRAINE_ALPHA); 
-                            twinSunContribution = rayState.throughput *scatterWeight *sunContribution *payload.transmission * GetAtmosphereSunTransmittance(scatterPos, shadowRay.Direction, rng, i == 0 ? 4 : 4) * sunPhase;
-                            
-                        }
-                    #endif
-                #endif
-                
                 bool inWater = g_view.cameraIsUnderWater;
-                float VdotL = dot(rayState.rayDesc.Direction, shadowRay.Direction);
-                const float SSS_PHASE_ANISOTROPY = 0.615; // Roughly isotropic once inside organic/solid media.
+                float VdotL = dot(rayState.rayDesc.Direction, light.direction);
+                const float SSS_PHASE_ANISOTROPY = 0.815; // Roughly isotropic once inside organic/solid media.
                 float g = rayState.inSSSMedium ? SSS_PHASE_ANISOTROPY : (inEnd ? END_FOG_ANISOTROPY : 0.635);
-                float ambientG = rayState.inSSSMedium ?  0.235 : (inEnd ? END_FOG_INDIRECT_ANISOTROPY : 0.235);
+                float ambientG = rayState.inSSSMedium ?  0.535 : (inEnd ? END_FOG_INDIRECT_ANISOTROPY : 0.535);
                 float sunPhase = inWater ? waterPhase(VdotL) : PhaseDraine(VdotL, g, DRAINE_ALPHA);
 
                 
@@ -1168,16 +847,14 @@
                 #if ENABLE_SUNLIGHT == 0
                     sunContribution = 0;
                 #endif
-                
 
-                
-
-                float3 directScatter = rayState.throughput * scatterWeight *
-                (sunContribution * payload.transmission * sunFogTransmittance * sunPhase + twinSunContribution);
+                float3 directScatter = rayState.throughput * scatterWeight * (light.radiance * sunPhase);
                 
 
                 rayState.color += directScatter;
                 float phasePdf;
+
+                
                 float3 nextDirection = SampleDraine(
                 rayState.rayDesc.Direction,
                 ambientG,
@@ -1222,14 +899,15 @@
             rayState.throughput.x,
             max(rayState.throughput.y, rayState.throughput.z)
             );
-
+            
+            
             if (i > 0)
             {
                 float p = max(max(rayState.throughput.x, rayState.throughput.y), rayState.throughput.z);
                 if (NextFloat(rng) > p) break;
                 rayState.throughput /= p;
             }
-
+            
 
             // Terminate rays that can't contribute anymore.
             if (all(rayState.throughput == 0))
@@ -1249,34 +927,6 @@
             firstHitDist = maxDistance;
             outputMotion = 0;
         }
-
-        //RenderSky(rayState);
-        /*
-        float distanceFade = saturate(mad(outputDistance, g_view.distanceFadeScaleBias.x, g_view.distanceFadeScaleBias.y));
-        
-        
-
-        float4 sunColor = getSunColor(float4(0.xxxx));
-
-        float sunLuminance = luminance(sunColor.rgb ) * RAYLEIGH_MULT;
-        
-        // The atmosphere function adds the planet radius internally; pass the
-        // existing 1000-meter offset converted to kilometers.
-        const float minSunIntensity = 1.0;
-        sunLuminance = max(sunLuminance, minSunIntensity); // This allows for the sun to have an effect on the sky even after sunset
-        float3 rayOriginKm = float3(0.0f, 1000.0f, 0.0f) * 0.001f;
-        float3 finalColor = RenderHillaireAtmosphereLUTless(
-        rayOriginKm,
-        rayState.rayDesc.Direction,
-        mainLightDir,
-        sunLuminance,
-        rng,false);
-
-        
-        rayState.color = lerp(finalColor, rayState.color, distanceFade);
-        */
-        
-        //rayState.color = rayMarchFog(rayDesc.Origin, rayDesc.Direction,rayState.color, fogDistance, pixelPos);
         return rayState.color;
     }
 

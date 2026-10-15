@@ -34,6 +34,28 @@
         return F0 + (f - F0) * BRDF_Pow5(cosTheta);
     }
 
+    // Exact unpolarized dielectric Fresnel reflectance for bidirectional interfaces (air <-> dielectric).
+    // cosThetaI: angle with incident surface/microfacet normal (cosThetaI >= 0).
+    // eta: ratio of incident medium IOR to transmitted medium IOR (eta_i / eta_t).
+    // outCosThetaT: cosine of transmitted angle, or 0 on total internal reflection (TIR).
+    float DielectricFresnel(float cosThetaI, float eta, out float outCosThetaT) {
+        cosThetaI = clamp(cosThetaI, 0.0f, 1.0f);
+        float sinThetaI2 = max(0.0f, 1.0f - cosThetaI * cosThetaI);
+        float sinThetaT2 = eta * eta * sinThetaI2;
+
+        if (sinThetaT2 >= 1.0f) {
+            outCosThetaT = 0.0f;
+            return 1.0f; // Total internal reflection
+        }
+
+        outCosThetaT = sqrt(max(0.0f, 1.0f - sinThetaT2));
+
+        float rParallel = (cosThetaI - eta * outCosThetaT) / max(cosThetaI + eta * outCosThetaT, 1e-5f);
+        float rPerp     = (eta * cosThetaI - outCosThetaT) / max(eta * cosThetaI + outCosThetaT, 1e-5f);
+
+        return clamp(0.5f * (rParallel * rParallel + rPerp * rPerp), 0.0f, 1.0f);
+    }
+
 
 
     float DistributionGGX(float3 N, float3 H, float roughness) {
@@ -149,6 +171,210 @@
         return ggx1 * ggx2;
     }
 
+    float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
+        float D = D_GGX(NdotH, roughness);
+        float G1 = G1_SmithGGX(NdotV, roughness);
+
+        return (D * G1 * max(0.0, VdotH)) / max(NdotV, 0.00001);
+    }
+
+    float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
+        return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
+    }
+
+
+    float MISWeight(float pdfA, float pdfB)
+    {
+        pdfA *= pdfA;
+        pdfB *= pdfB;
+
+        return pdfA / (pdfA + pdfB);
+    }
+
+    float PDF_CosineHemisphere(float NdotL) {
+        return max(0.0, NdotL) / PI;
+    }
+
+
+    float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {
+        float a = roughness * roughness;
+
+        // Analytical directional albedo E(x) approximations
+        float E_v = saturate(1.0 - a * (1.0 - NdotV));
+        float E_l = saturate(1.0 - a * (1.0 - NdotL));
+        float E_avg = saturate(1.0 - a * 0.5);
+
+        // Directional average of Fresnel
+        float3 F_avg = F0 + (1.0 - F0) / 21.0;
+
+        // Evaluate multiple scattering term
+        float3 Fms = (F_avg * (1.0 - E_v) * (1.0 - E_l)) / (PI * (1.0 - F_avg * (1.0 - E_avg)) + 1e-5);
+
+        return Fms;
+    }
+
+    // Analytical approximation of the GGX directional albedo E(µ)
+    float Evaluate_E(float mu, float roughness) {
+        float4 c0 = float4(-1.0, -0.0275, -0.572,  0.022);
+        float4 c1 = float4( 1.0,  0.0425,  1.040, -0.040);
+        
+        float4 r = roughness * c0 + c1;
+        float a = r.x * min(r.y, exp2(-9.28 * mu)) + r.z;
+        float b = r.w;
+        
+        return min(a + b, 1.0);
+    }
+
+    // Analytical approximation of the GGX average albedo E_avg across all angles
+    float Evaluate_Eavg(float roughness) {
+        return 1.0 - roughness * (0.35416 + roughness * (0.04167 - roughness * 0.16667));
+    }
+
+    // Average Fresnel term derived by Fdez-Agüera
+    float3 Evaluate_Favg(float3 F0) {
+        return F0 + (float3(1.0, 1.0, 1.0) - F0) / 21.0;
+    }
+
+    float3 diffuseBRDFLambert(float3 N, float3 L, float3 V, float3 albedo, float metalness, float roughness, float3 F0, float specularProbability) 
+    {
+        float NdotL = max(dot(N, L), 0.0001); 
+        float NdotV= max(dot(N, V), 0.0001); 
+        float3 H = normalize(V + L); 
+        float VdotH = max(dot(V, H), 0.0001); 
+        float LdotH = max(dot(L,H), 0.001);
+        float3 F = fresnelSchlick(VdotH, 0.04); 
+        
+        float rawNdotL = dot(N, L);
+        float3 thp = 1.0;
+        if (rawNdotL <= 0.0)
+        {
+            thp = 0.0;
+            L = N;
+        }
+        float diffMultiplier = 1 / PI ; 
+        float3 kD = (1.0 - F) * (1.0 - metalness);
+        float3 diffuseBRDF = kD * albedo * (diffMultiplier); 
+        
+        float localDiffusePdf = max(PDF_CosineHemisphere(NdotL), 1e-4); 
+        
+        float diffProb = 1.0 - specularProbability;
+        thp = ((diffuseBRDF * NdotL) / (localDiffusePdf * max(diffProb, 1e-4))); 
+
+        return thp;
+    }
+
+    float3 diffuseBRDFHammon(float3 N, float3 L, float3 V, float3 albedo, float metalness, float roughness, float3 F0, float specularProbability) 
+    {
+        float rawNdotL = dot(N, L);
+        float NdotL = max(dot(N, L), 0.0001); 
+        float NdotV = max(dot(N, V), 0.0001); 
+
+        if (rawNdotL <= 0.0) return float3(0.0, 0.0, 0.0);
+
+        // --- HAMMON DIFFUSE SPECULAR-COUPLED MATH ---
+        // 1. Compute half vector and standard Fresnel for the layer boundary
+        float3 H = normalize(V + L);
+        float VdotH = max(dot(V, H), 0.0001);
+        float3 F = fresnelSchlick(VdotH, F0);
+
+        // 2. Hammon's facing and grazing transmission weights
+        // This scales the light passing through the rough specular boundary
+        float3 transmissionFacing = float3(1.0, 1.0, 1.0) - F0;
+        float3 transmissionGrazing = float3(1.0, 1.0, 1.0) - F;
+
+        // 3. Smooth vs Rough Blend factors (Hammon's analytical approximation)
+        // This dictates how the microfacets diffuse incoming light before it hits the substrate
+        float smoothDiffuse = (1.0 / PI) * (transmissionGrazing.x * transmissionGrazing.y * transmissionGrazing.z); // simplified grayscale luminance approx or vector form
+        
+        // Vector form keeping full color channel fidelity for colored F0:
+        float3 smoothDiffuseColor = (float3(1.0, 1.0, 1.0) - F) * (float3(1.0, 1.0, 1.0) - fresnelSchlick(NdotL, F0));
+        float3 roughDiffuseColor = float3(0.21, 0.21, 0.21) * (float3(1.0, 1.0, 1.0) - F0);
+
+        // Blend between smooth facing behavior and rough scattered behavior based on roughness
+        float3 hammonDiffuseLobe = (1.0 / PI) * lerp(smoothDiffuseColor, roughDiffuseColor, roughness);
+        // --------------------------------------------
+
+        // Strict energy floor for metals
+        float3 kD = hammonDiffuseLobe * (1.0 - metalness);
+        float3 diffuseBRDF = kD * albedo; 
+
+        // Your engine's native path-splitting normalization
+        float localDiffusePdf = max(PDF_CosineHemisphere(NdotL), 1e-4); 
+        float diffProb = 1.0 - specularProbability;
+
+        return (diffuseBRDF * NdotL) / (localDiffusePdf * max(diffProb, 1e-4)); 
+    }
+
+    float3 diffuseBRDFHammonConserving(float3 N, float3 L, float3 V, float3 albedo, float metalness, float roughness, float3 F0, float specularProbability) 
+    {
+        float rawNdotL = dot(N, L);
+        float NdotL = max(dot(N, L), 0.0001); 
+        float NdotV = max(dot(N, V), 0.0001); 
+
+        if (rawNdotL <= 0.0) return float3(0.0, 0.0, 0.0);
+
+        float3 H = normalize(V + L);
+        float VdotH = max(dot(V, H), 0.0001);
+
+        // 1. Fetch the exact boundaries
+        float3 F_V = fresnelSchlick(NdotV, F0);
+        float3 F_L = fresnelSchlick(NdotL, F0);
+
+        // 2. Hammon's Reciprocal Transmission Shell
+        // We replace the empirical scaling factors with a strict reciprocal mask
+        float3 transmission = (float3(1.0, 1.0, 1.0) - F_V) * (float3(1.0, 1.0, 1.0) - F_L);
+
+        // 3. Hammon Roughness Factor Adjustment
+        // This scales down the diffuse profile at sharp grazing angles for smooth surfaces,
+        // but expands outward uniformly to recover energy on rough boundaries.
+        float facingFactor = 0.5 + 2.0 * VdotH * VdotH * roughness;
+        float3 hammonShape = transmission * (1.0 + (facingFactor - 1.0) * pow(1.0 - NdotV, 5.0)) 
+        * (1.0 + (facingFactor - 1.0) * pow(1.0 - NdotL, 5.0));
+
+        // 4. Force a strict 1/PI normalization floor 
+        float3 diffuseBRDF = (hammonShape * albedo * (1.0 - metalness)) / PI;
+
+        // Standard engine split-lobe normalization path
+        float localDiffusePdf = max(PDF_CosineHemisphere(NdotL), 1e-4); 
+        float diffProb = 1.0 - specularProbability;
+
+        return (diffuseBRDF * NdotL) / (localDiffusePdf * max(diffProb, 1e-4)); 
+    }
+
+    float3 specularBRDFGGX(float3 N, float3 L, float3 V, float3 F0, float3 H, float roughness,float specularProbability) 
+    {
+        
+        float rawNdotL = dot(N, L);
+        float NdotL = max(dot(N, L), 0.0001); 
+        float NdotV = max(dot(N, V), 0.0001); 
+        float NdotH = max(dot(N, H), 0.0001);
+        float VdotH = max(dot(V, H), 0.0001); 
+        float LdotH = max(dot(L,H), 0.001);
+
+        float3 F = fresnelSchlick(VdotH, F0); 
+        float D = D_GGX(NdotH, roughness);
+        float G = G_Smith(NdotV, NdotL, roughness); 
+        float3 specWeight = (F * D * G) / (4.0 * NdotV * NdotL);
+        
+        float pdf_r = PDF_GGX_Reflection(NdotV, NdotH, VdotH, roughness); 
+        float combinedPdf = max(pdf_r, 1e-6); 
+
+        float3 thp = 1.0;
+        if (rawNdotL <= 0.0)
+        {
+            thp = 0.0;
+            L = N;
+        }
+
+        thp = (specWeight * NdotL) / (combinedPdf * specularProbability);
+        return thp;
+    }
+
+    float3 refractionBRDF(float3 N, float3 L, float3 V, float3 F0, float roughness, float specularProbability)
+    {
+        // Placeholder implementation for refraction BRDF
+        return float3(0, 0, 0);
+    }
 
     // General thesis from https://jo.dreggn.org/home/2017_normalmap.pdf 
     // Unused and likely incomplete
@@ -183,29 +409,6 @@
         max(4.0 * NoV * NoL, 1e-6);
     }
 
-    float PDF_GGXVNDF(float NdotV, float NdotH, float VdotH, float roughness) {
-        float D = D_GGX(NdotH, roughness);
-        float G1 = G1_SmithGGX(NdotV, roughness);
-
-        return (D * G1 * max(0.0, VdotH)) / max(NdotV, 0.00001);
-    }
-
-    float PDF_GGX_Reflection(float NdotV, float NdotH, float VdotH, float roughness) {
-        return PDF_GGXVNDF(NdotV, NdotH, VdotH, roughness) / (4.0 * max(VdotH, 0.0001));
-    }
-
-
-    float MISWeight(float pdfA, float pdfB)
-    {
-        pdfA *= pdfA;
-        pdfB *= pdfB;
-
-        return pdfA / (pdfA + pdfB);
-    }
-
-    float PDF_CosineHemisphere(float NdotL) {
-        return max(0.0, NdotL) / PI;
-    }
 
     void BuildOrthonormalBasis(float3 N, out float3 T, out float3 B) {
         N = safeNormalize(N, float3(0, 1, 0));
@@ -396,21 +599,6 @@
     }
 
 
-float3 FdezAgueraMultipleScattering(float NdotV, float NdotL, float roughness, float3 F0) {
-    float a = roughness * roughness;
-
-    // Analytical directional albedo E(x) approximations
-    float E_v = saturate(1.0 - a * (1.0 - NdotV));
-    float E_l = saturate(1.0 - a * (1.0 - NdotL));
-    float E_avg = saturate(1.0 - a * 0.5);
-
-    // Directional average of Fresnel
-    float3 F_avg = F0 + (1.0 - F0) / 21.0;
-
-    // Evaluate multiple scattering term
-    float3 Fms = (F_avg * (1.0 - E_v) * (1.0 - E_l)) / (PI * (1.0 - F_avg * (1.0 - E_avg)) + 1e-5);
-
-    return Fms;
-}
+    
 
 #endif //BRDF_HLSL
