@@ -1,5 +1,8 @@
 #include "Include/Generated/Signature.hlsl"
 
+
+
+
 [numthreads(4, 4, 2)]
 void IncidentLightMeterInline(
     uint3 dispatchThreadID : SV_DispatchThreadID,

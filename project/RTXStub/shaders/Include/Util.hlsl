@@ -508,6 +508,18 @@ float getBiomeAdjustedRainLevel()
          pow(max(denom, 1e-6), 1.5));
 }
 
+float DrainePhase(float cosTheta, float g, float alpha)
+{
+    float piFactor = 1.0 / (4.0 * PI);
+    float gSquared = g * g;
+    float numerator1 = 1 - gSquared;
+    float denom1 = (1 - gSquared - (g * 2) * cosTheta);
+    float numerator2 = 1 + (alpha * (cosTheta * cosTheta));
+    float denom2 = 1 * alpha * (1 + 2 * gSquared) / 3.0;
+    return piFactor * (numerator1 / denom1) * (numerator2 / denom2);
+}
+
+
 
 uint readAccumulationFrameIdx() { return outputBufferToneMappingHistogram[uint2(0,0)]; }
 void storeAccumulationFrameIdx(uint frameIdx) { outputBufferToneMappingHistogram[uint2(0,0)] = frameIdx; }

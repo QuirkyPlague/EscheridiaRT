@@ -36,13 +36,17 @@
 
     struct shadowPayload { 
         float3 transmission; 
+        float3 refractionSurfacePos;
+        float3 refractiveWeight;
+        bool traversedRefraction;
+        
     }; 
 
     void TraceShadowRay(in RayDesc ray, out shadowPayload payload) { 
         RayQuery<RAY_FLAG_NONE> q; 
         const uint INSTANCE_MASK_SHADOW = INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_PRIMARY | INSTANCE_MASK_ALPHA_BLEND_PRIMARY | INSTANCE_MASK_WATER; 
         
-    
+        
         q.TraceRayInline(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, INSTANCE_MASK_SHADOW, ray); 
         
         float3 transmission = 1.0f.xxx; 
@@ -71,18 +75,18 @@
                 else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) { 
                     GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
                     SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object); 
-                    
-                    // Attenuate light passing through transmissive alpha-blended surface (dielectric transmission tint)
-                    transmission *= GetAlphaBlendTransmissionTint(surfaceInfo.color); 
-                    
+                   
+
+                    transmission *= lerp(surfaceInfo.color, 0.0, surfaceInfo.alpha);
                     continue; 
                 } 
                 else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
                     GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
+                    SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);  
                     
                     // Get depth from shadow ray origin to water intersection point
                     float3 waterExtinction = calcTransmittance(q.CandidateTriangleRayT(), getMediaExtinction(MEDIA_TYPE_WATER).rgb); 
-                    transmission *= waterExtinction; 
+                    //transmission *= waterExtinction; 
                     
                     continue; 
                 } 
@@ -133,10 +137,10 @@
                     else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) { 
                         GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
                         SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object); 
-                    
+                        
                         // Attenuate light passing through transmissive alpha-blended surface (dielectric transmission tint)
                         transmission *= GetAlphaBlendTransmissionTint(surfaceInfo.color); 
-                    
+                        
                         continue; 
                     }
                     else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {

@@ -87,7 +87,7 @@ void ToneCurve(
             dynamicMaxEV);
 
         outputBufferToneCurve[uint2(4, 0)] = measuredLogLuminance;
-        float adaptSpeed = (targetExposureEV < previousExposureEV) ? 0.08 : 0.05;
+        float adaptSpeed = (targetExposureEV < previousExposureEV) ? 0.025 : 0.04;
         outputBufferToneCurve[uint2(3, 0)] =
             lerp(previousExposureEV, targetExposureEV, adaptSpeed);
     }

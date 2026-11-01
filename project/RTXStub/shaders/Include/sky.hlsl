@@ -3,7 +3,7 @@
 
     #include "settings.hlsl"
     #include "Util.hlsl"
-  
+    #include "fog.hlsl"
 
     float Rayleigh(float mu) {
         return 3.0 * (1.0 + mu * mu) / (16.0 * PI);
@@ -19,9 +19,9 @@
             DAY_SUN_COLOR,
             DAY_SUN_COLOR,
             SUNRISE_SUN_COLOR,
-            SUNRISE_SUN_COLOR * 0.06,
-            SUNRISE_SUN_COLOR * 0.025,
-            SUNRISE_SUN_COLOR * 0.025,
+            SUNRISE_SUN_COLOR * 0.4,
+            SUNRISE_SUN_COLOR * 0.25,
+            SUNRISE_SUN_COLOR * 0.15,
             MOON_COLOR
         };
 
@@ -234,7 +234,7 @@
         return color;
     }
 
-     float3 getSun(float3 dir) {
+    float3 getSun(float3 dir) {
         float3 sunDir = inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
         float3 moonDir = getTrueDirectionToMoon();
         float cosThetaSun = dot(dir, sunDir);
@@ -263,9 +263,9 @@
         float discRadius = saturate(radial);
         float discMu = sqrt(saturate(1.0 - discRadius * discRadius));
         float limbDarkening = lerp(
-            1.0 - (inEnd ? 0.6 : SUN_DISC_LIMB_DARKENING),
-            1.0,
-            discMu);
+        1.0 - (inEnd ? 0.6 : SUN_DISC_LIMB_DARKENING),
+        1.0,
+        discMu);
         // Explicit special handling for the end sun disc 
         // Will calculate the edge of the cirlce and also find the distance from the center
         if(inEnd)
@@ -316,7 +316,7 @@
         angularDist1);
 
         float3 moonColor =  float3(0.12, 0.321,0.65);
-        float3 fullmoon = inEnd ? 0.0 : moon * moonColor * 10 * sunHeightFactor;
+        float3 fullmoon = inEnd ? 0.0 : moon * moonColor * sunHeightFactor;
 
         float3 celestial = fullSun + fullmoon;
 
@@ -369,192 +369,7 @@
         return staticSkyTex;
     }
 
-    float3 skyScattering1(float3 pos) {
-        #if WHITE_FURNACE == 1
-            return 1.0;
-        #else
-            
-            float3 dir = normalize(pos);
-            float3 sunDir = inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
-            float3 moonDir = getTrueDirectionToMoon();
 
-            float3 endTwinSunDir = END_TWIN_SUN_DIRECTION;
-
-            float VoL = dot(dir, sunDir);
-            float rayleigh = inEnd ? Rayleigh(VoL) * END_RAYLEIGH_MULT  : Rayleigh(VoL) * RAYLEIGH_MULT;
-
-
-            float upPos = saturate(dir.y);
-            float downPos = clamp(dir.y, -1.0, 0.0);
-            float negatedDownPos = -1.0 * downPos;
-            float midPos = upPos + negatedDownPos;
-            float negatedMidPos = 1.0 - midPos;
-            //rain
-            const float3 rainZenCol = float3(0.4784, 0.4784, 0.4784) * 15;
-            const float3 rainHorCol = float3(0.7059, 0.7569, 0.7961) * 15;
-            const float3 rainGrndCol = float3(0.1569, 0.1922, 0.2314) * 15;
-
-            const int keys = 10;
-
-            const float3 colors[7] = {
-                NOON_SKY_COL,
-                DAY_SKY_COL,
-                DAY_SKY_COL,
-                SUNRISE_SKY_COL,
-                SUNSET_SKY_COL * 0.06,
-                SUNSET_SKY_COL * 0.025,
-                NIGHT_SKY_COL * NIGHT_INTENSITY
-            };
-            const float times[7] = {
-                0.0000000000, // 6000
-                0.1920399368, // 3000
-                0.3466664553, // 1000
-                0.4309642911, // 0
-                0.4746705294, // 23500
-                0.5193186402, // 23000
-                0.5621
-            };
-
-            const float weatherIntensity[7] = {
-                0.95,
-                0.95,
-                0.45,
-                0.3,
-                0.02,
-                0.01,
-                0.0015
-            };
-
-            const float3 horizonColors[7] = {
-                NOON_HORIZON_COL,
-                DAY_HORIZON_COL * 2.2,
-                DAY_HORIZON_COL * 2.2,
-                SUNRISE_HORIZON_COL * 2.15,
-                SUNSET_HORIZON_COL * 0.1,
-                SUNSET_HORIZON_COL * 0.025,
-                NIGHT_HORIZON_COL * NIGHT_INTENSITY
-            };
-            const float3 groundColors[7] = {
-                NOON_GROUND_COL,
-                DAY_GROUND_COL,
-                DAY_GROUND_COL,
-                SUNRISE_GROUND_COL,
-                SUNSET_GROUND_COL * 0.1,
-                SUNSET_GROUND_COL * 0.01,
-                NIGHT_GROUND_COL * NIGHT_INTENSITY
-            };
-            const float4 mieColor[7] = {
-                NOON_MIE_COL,
-                DAY_MIE_COL,
-                DAY_MIE_COL,
-                SUNRISE_MIE_COL,
-                SUNSET_MIE_COL * 0.86,
-                SUNSET_MIE_COL * 0.86,
-                NIGHT_MIE_COL
-            };
-
-            float time = getTime();
-
-            float timediff = clamp(abs(g_view.skyTextureW - 0.51952102785), 0, 0.00879302615);
-            timediff *= 1.0 / 0.00879302615;
-            float3 zenithCol = NIGHT_SKY_COL * NIGHT_INTENSITY;
-            float3 horizonCol = NIGHT_HORIZON_COL * NIGHT_INTENSITY;
-            float3 groundCol = NIGHT_GROUND_COL * NIGHT_INTENSITY;
-            float mieScale = 0.0;
-            float3 mieScat = float3(0.0,0.0,0.0);
-            float dawnDuskMieFactor = 0.0;
-            float dawnDuskTimeFactor = 0.0;
-            float rainIntensityShift = 0.01;
-
-            [unroll] for (int i = 1; i < 7; i++) {
-                if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i]) {
-                    float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
-
-                    zenithCol = lerp(colors[i - 1], colors[i], w);
-                    horizonCol = lerp(horizonColors[i - 1], horizonColors[i], w);
-                    groundCol = lerp(groundColors[i - 1], groundColors[i], w);
-                    mieScat = lerp(mieColor[i - 1].rgb, mieColor[i].rgb, w);
-                    mieScale = lerp(mieColor[i - 1].a, mieColor[i].a, w);
-                    dawnDuskMieFactor = smoothstep(-0.035, 0.035, dir.y);
-                    dawnDuskTimeFactor = smoothstep(0.00, 0.05, w) * smoothstep(0.1, 0.35, w);
-                    rainIntensityShift = lerp(weatherIntensity[i - 1], weatherIntensity[i], w);
-                    break;
-                }
-            }
-            
-            float zenithBlend = saturate(pow(upPos, inEnd ? END_ZENITH_BLEND : ZENITH_BLEND));
-            float horizonBlend = saturate(pow(negatedMidPos, inEnd ? END_HORIZON_BLEND : HORIZON_BLEND));
-            float groundBlend = saturate(pow(negatedDownPos, inEnd ? END_GROUND_BLEND : GROUND_BLEND));
-
-            zenithCol = lerp(zenithCol, rainZenCol * rainIntensityShift, getBiomeAdjustedRainLevel());
-            horizonCol = lerp(horizonCol, rainHorCol * rainIntensityShift,  getBiomeAdjustedRainLevel());
-            groundCol = lerp(groundCol, rainGrndCol * rainIntensityShift,  getBiomeAdjustedRainLevel());
-
-            zenithCol = inEnd ? END_ZENITH_COLOR : zenithCol;
-            horizonCol = inEnd ? END_HORIZON_COLOR : horizonCol;
-            groundCol = inEnd ? END_GROUND_COLOR : groundCol;
-
-            zenithCol *= rayleigh * zenithBlend;
-            horizonCol *= rayleigh * horizonBlend;
-            groundCol *= rayleigh * groundBlend;
-
-            float3 sky = zenithCol + horizonCol + groundCol;
-
-            float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0)) ;
-
-            float3 moonMieScatterColor = float3(0.00341, 0.00441, 0.01796);
-            float sVoL = dot(dir, sunDir);
-            float mVoL = dot(dir, moonDir);
-
-            float twinVol = dot(dir, endTwinSunDir);
-
-            float miePhase = HG(sVoL, inEnd ? END_MIE_COLOR.a : mieScale);
-            float twinMiePhase = HG(twinVol, 0.85);
-            mieScat = inEnd ? END_MIE_COLOR.rgb : mieScat;
-            float3 mieColors = sunColor.rgb * mieScat * miePhase * 0.7 * SKY_MIE_SCATTERING_STRENGTH;
-            float3 twinMieColors = END_TWIN_SUN_COLOR * float3(0.3, 0.5, 0.8)  * twinMiePhase;
-            float moonPhase = HG(mVoL, 0.931);
-            float3 mieNight = moonMieScatterColor * moonPhase * 0.017;
-
-            float3 finalMie = mieColors + mieNight;
-            
-            
-            float sunElev = sunDir.y;
-            float sunAboveMask = smoothstep(-0.08, 0.2, sunElev);
-
-            float viewElev = dir.y;
-            float viewAboveMask = smoothstep(-0.065, 0.035, viewElev);
-            float sVoL_clamped = max(sVoL, 0.0);
-
-            float miePhase_clamped = HG(sVoL_clamped, mieScale);
-
-            float dawnDuskMix = lerp(1.0, dawnDuskMieFactor, dawnDuskTimeFactor);
-
-            float mieVisibility = sunAboveMask;
-
-            mieColors = mieScat * miePhase_clamped * 0.85;
-            finalMie = (mieColors * mieVisibility * dawnDuskMix) + mieNight;
-
-            #if USE_END_TWIN_SUNS
-                
-                if(inEnd) {
-                    finalMie +=twinMieColors;
-                }
-
-            #endif
-
-            float3 sun = getSun(dir);
-            float skyLuminance = dot(sky, 1.0);
-            /*
-            sky = pow(sky, 1.5);
-            sky *= skyLuminance / dot(sky, 1.0);
-            */
-            float3 color =  sky + finalMie;
-            color = inEnd ? lerp(color, endSkyColor(dir) * ORIGINAL_END_SKY_INTENSITY, 0.25)  : color;
-            
-            return color + sun;
-        #endif
-    }
 
 
     static const float3x3 matrix_xyz_to_rec2020 = transpose(float3x3(1.71665118797, -0.355670783776, -0.253366281374, -0.666684351832, 1.61648123664, 0.015768545814, 0.017639857445, -0.042770613258, 0.942103121235));
@@ -565,11 +380,11 @@
     static const float  ATM_RADIUS_KM   = 6420.0f;
     static const float  EARTH_RADIUS = EARTH_RADIUS_KM;
     static const float  ATM_RADIUS   = ATM_RADIUS_KM;
-    static const float  H_RAYLEIGH   =  inEnd ? 30.55f : 32.0f;
-    static const float  H_MIE        = inEnd ? 5.4f : 2.2f;
+    static const float  H_RAYLEIGH   =  inEnd ? 24.55f : 12.0f;
+    static const float  H_MIE        = inEnd ? 1.7f : 2.2f;
 
-    static const float3 BETA_RAYLEIGH = float3(4.202f, 12.558f, 27.100f) * 1e-3f;
-    static const float3 END_RAYLEIGH = float3(3.32f, 1.0f, 11.56f) * 1e-3f;
+    static const float3 BETA_RAYLEIGH = float3(4.202f, 12.558f, 24.100f) * 1e-3f;
+    static const float3 END_RAYLEIGH = float3(2.32f, 0.26f, 13.56f) * 1e-3f;
     static const float3 RAIN_RAYLEIGH = float3(33.202f, 33.558f, 33.900f) * 1e-3f;
 
     static const float  BETA_MIE_S    = 45.996f * 1e-3f;
@@ -577,71 +392,60 @@
 
     // Ozone absorption (Chappuis band) - keep the same color tint and scale as the older
     // tuned values, but in the analytic km-based model.
-    static const float3 BETA_OZONE_ABSORPTION =  inEnd ? float3(0.001839,0.006648, 0.000208) : float3(0.001839,0.001648, 0.000208);
+    static const float3 BETA_OZONE_ABSORPTION =  inEnd ? float3(0.0003839,0.009648, 0.000208) : float3(0.002139,0.001748, 0.000168);
 
 
     // [PRE99], see also https://www.desmos.com/calculator/giz0uiar7k
-float3 atmosphere_mieCoefficientsPreetham(float turbidity) {
-    const float3 a0 = float3(-0.00767542206226, -0.00822772032997, -0.0121707541321);
-    const float3 a1 = float3(0.00771550875198, 0.00827069152678, 0.0122343187466);
-    return (a0 + a1 * turbidity);
-}
-
-float sampleMieDensity(float altitude) {
-    return exp(-max(altitude, 0.0f) / max(H_MIE, 1e-4f));
-}
-
-static float3 RAYLEIGH_SCATTERING_BASE = lerp(BETA_RAYLEIGH, RAIN_RAYLEIGH, getBiomeAdjustedRainLevel());
-
-// Calculate the air density ratio at a given height (km) relative to sea level.
-// Fitted to U.S. Standard Atmosphere 1976. The coefficients are valid for km-scaled heights.
-float sampleRayleighDensity(float altitude) {
-    const float a0 = 0.00947927584794f;
-    const float a1 = -0.138528179963f;
-    const float a2 = -0.00235619411773f;
-    float h = max(altitude, 0.0f);
-    return exp2(a0 + a1 * h + a2 * h * h);
-}
-
-// Ozone density is kept in the same km-scaled domain as the rest of the atmosphere.
-static const float3 OZONE_ABSORPTION_BASE = BETA_OZONE_ABSORPTION;
-
-// Calculate the ozone number density in 10^17 molecules/m^3.
-// The altitude is expressed in km, so the curve remains consistent with the rest of the model.
-float sampleOzoneDensity(float altitude) {
-    float x = max(altitude, 0.0f);
-    float x2 = x * x;
-    float x3 = x2 * x;
-    float x4 = x2 * x2;
-
-    const float d10 = 3.14463183276f;
-    const float d11 = 0.0498300739786f;
-    const float d12 = -0.13053950591f;
-    const float d13 = 0.021937805502f;
-    const float d14 = -0.000931031499395f;
-    float d1 = exp2(d10 + d11 * x + d12 * x2 + d13 * x3 + d14 * x4);
-
-    const float d20 = -15.9975955967f;
-    const float d21 = 2.79421136239f;
-    const float d22 = -0.128226752502f;
-    const float d23 = 0.00249280242662f;
-    const float d24 = -0.0000185558309121f;
-    float d2 = exp2(d20 + d21 * x + d22 * x2 + d23 * x3 + d24 * x4);
-
-    return d1 + d2;
-}
-    bool RaySphereIntersect(float3 rayOrig, float3 rayDir, float sphereRad, out float t0, out float t1)
-    {
-        t0 = 0.0f; t1 = 0.0f;
-        float b = dot(rayOrig, rayDir);
-        float c = dot(rayOrig, rayOrig) - (sphereRad * sphereRad);
-        float d = b * b - c;
-        if (d < 0.0f) return false;
-        float sqrtD = sqrt(max(d, 0.0f));
-        t0 = -b - sqrtD;
-        t1 = -b + sqrtD;
-        return true;
+    float3 atmosphere_mieCoefficientsPreetham(float turbidity) {
+        const float3 a0 = float3(-0.00767542206226, -0.00822772032997, -0.0121707541321);
+        const float3 a1 = float3(0.00771550875198, 0.00827069152678, 0.0122343187466);
+        return (a0 + a1 * turbidity);
     }
+
+    float sampleMieDensity(float altitude) {
+        return exp(-max(altitude, 0.0f) / max(H_MIE, 1e-4f));
+    }
+
+    static float3 RAYLEIGH_SCATTERING_BASE = lerp(BETA_RAYLEIGH, RAIN_RAYLEIGH, getBiomeAdjustedRainLevel());
+
+    // Calculate the air density ratio at a given height (km) relative to sea level.
+    // Fitted to U.S. Standard Atmosphere 1976. The coefficients are valid for km-scaled heights.
+    float sampleRayleighDensity(float altitude) {
+        const float a0 = 0.00947927584794f;
+        const float a1 = -0.138528179963f;
+        const float a2 = -0.00235619411773f;
+        float h = max(altitude, 0.0f);
+        return exp2(a0 + a1 * h + a2 * h * h);
+    }
+
+    // Ozone density is kept in the same km-scaled domain as the rest of the atmosphere.
+    static const float3 OZONE_ABSORPTION_BASE = BETA_OZONE_ABSORPTION;
+
+    // Calculate the ozone number density in 10^17 molecules/m^3.
+    // The altitude is expressed in km, so the curve remains consistent with the rest of the model.
+    float sampleOzoneDensity(float altitude) {
+        float x = max(altitude, 0.0f);
+        float x2 = x * x;
+        float x3 = x2 * x;
+        float x4 = x2 * x2;
+
+        const float d10 = 3.14463183276f;
+        const float d11 = 0.0498300739786f;
+        const float d12 = -0.13053950591f;
+        const float d13 = 0.021937805502f;
+        const float d14 = -0.000931031499395f;
+        float d1 = exp2(d10 + d11 * x + d12 * x2 + d13 * x3 + d14 * x4);
+
+        const float d20 = -15.9975955967f;
+        const float d21 = 2.79421136239f;
+        const float d22 = -0.128226752502f;
+        const float d23 = 0.00249280242662f;
+        const float d24 = -0.0000185558309121f;
+        float d2 = exp2(d20 + d21 * x + d22 * x2 + d23 * x3 + d24 * x4);
+
+        return d1 + d2;
+    }
+    
 
     // Evaluates atmospheric layers at a given altitude in kilometers using the new analytic curves.
     void GetLayerDensities(float3 pos, out float dRayleigh, out float dMie, out float dOzone)
@@ -681,10 +485,10 @@ float sampleOzoneDensity(float altitude) {
         if (!RaySphereIntersect(pos, sunDir, ATM_RADIUS, t0, t1) || t1 <= 0.0f)
         return float3(1, 1, 1);
 
-       
+        
         if (t1 <= 0.0f) return float3(1, 1, 1);
         
-        const int SUN_STEPS = 16; 
+        const int SUN_STEPS = 8; 
         float stepLen = t1 / (float)SUN_STEPS;
         float3 accumOpticalDepth = float3(0, 0, 0);
         
@@ -716,6 +520,10 @@ float sampleOzoneDensity(float altitude) {
         return num / denom;
     }
 
+    float KleinNishinaPhase(float cosTheta, float e) {
+        return e / (2.0 * PI * (e * (1.0 - cosTheta) + 1.0) * log(2.0 * e + 1.0));
+    }
+
     float3 ProceduralStars(float3 rayDir, float nightFactor)
     {
         if (rayDir.y <= 0.0f || nightFactor <= 0.0f) return 0.0f;
@@ -723,9 +531,7 @@ float sampleOzoneDensity(float altitude) {
         const float STAR_LONGITUDE_CELLS = 512.0f;
         const float STAR_LATITUDE_CELLS = 256.0f;
         float3 dir = normalize(rayDir);
-        float2 sphericalUv = float2(
-            atan2(dir.z, dir.x) * (0.5f / PI) + 0.5f,
-            asin(clamp(dir.y, -1.0f, 1.0f)) / PI + 0.5f);
+        float2 sphericalUv = float2( atan2(dir.z, dir.x) * (0.5f / PI) + 0.5f, asin(clamp(dir.y, -1.0f, 1.0f)) / PI + 0.5f);
         float2 cellPosition = sphericalUv * float2(STAR_LONGITUDE_CELLS, STAR_LATITUDE_CELLS);
         uint2 cell = uint2(floor(cellPosition));
         float2 cellUv = frac(cellPosition) - 0.5f;
@@ -734,117 +540,125 @@ float sampleOzoneDensity(float altitude) {
 
         if (starChance > 0.075f) return 0.0f;
 
-        float2 starOffset = float2(
-            HashToFloat(PCG_Hash(uint3(seed, 0x13u, 0x71u))) - 0.5f,
-            HashToFloat(PCG_Hash(uint3(seed, 0x37u, 0xB3u))) - 0.5f);
+        float2 starOffset = float2( HashToFloat(PCG_Hash(uint3(seed, 0x13u, 0x71u))) - 0.5f, HashToFloat(PCG_Hash(uint3(seed, 0x37u, 0xB3u))) - 0.5f);
         float distanceFromStar = length(cellUv - starOffset);
-        float size = lerp(0.012f, 0.095f, HashToFloat(PCG_Hash(uint3(seed, 0x55u, 0x91u))));
+        float size = lerp(0.0072f, 0.055f, HashToFloat(PCG_Hash(uint3(seed, 0x55u, 0x91u))));
         float star = 1.0f - smoothstep(size * 0.3f, size, distanceFromStar);
         float brightness = lerp(0.15f, 1.6f, HashToFloat(PCG_Hash(uint3(seed, 0xA1u, 0xC7u))));
         float colorMix = HashToFloat(PCG_Hash(uint3(seed, 0xD3u, 0xE9u)));
-        float3 starColor = colorMix < 0.5f
-            ? lerp(float3(1.0f, 0.78f, 0.58f), float3(1.0f, 0.95f, 0.82f), colorMix * 2.0f)
-            : lerp(float3(1.0f, 0.95f, 0.82f), float3(0.68f, 0.78f, 1.0f), (colorMix - 0.5f) * 2.0f);
+        float3 starColor = colorMix < 0.5f? lerp(float3(1.0f, 0.78f, 0.58f), float3(1.0f, 0.95f, 0.82f), colorMix * 2.0f) : lerp(float3(1.0f, 0.95f, 0.82f), float3(0.68f, 0.78f, 1.0f), (colorMix - 0.5f) * 2.0f);
 
-        return starColor * star * brightness * nightFactor * 2.0f;
+        return starColor * star * brightness * nightFactor;
     }
 
 
-    float3 RenderHillaireAtmosphereLUTless(
-    float3 cameraPosKm, 
-    float3 rayDir, 
-    float3 sunDir, 
-    float  sunIntensity,
-    PathRNG rng, bool drawStars)
+
+
+    float3 RenderHillaireAnalytical(float3 cameraPosKm, float3 rayDir, float3 sunDir, float  sunIntensity,PathRNG rng, bool drawStars)
     {
-       
+        
         float3 rayOrig = cameraPosKm + float3(0.0f, EARTH_RADIUS + 0.001f, 0.0f);
         
+        // 1. Ray / Atmosphere Shell Intersection
         float t0, t1;
         if (!RaySphereIntersect(rayOrig, rayDir, ATM_RADIUS, t0, t1) || t1 <= 0.0f)
         return float3(0.0, 0.0, 0.0);
 
         t0 = max(t0, 0.0f);
 
+        // Clamp the ray against the ground plane if looking downwards to prevent marching through the core
+        float groundT0, groundT1;
+        if (RaySphereIntersect(rayOrig, rayDir, EARTH_RADIUS, groundT0, groundT1))
+        {
+            float tGround = (groundT0 > 1e-4f) ? groundT0 : ((groundT1 > 1e-4f) ? groundT1 : -1.0f);
+            if (tGround > 0.0f)
+            {
+                t1 = min(t1, tGround);
+            }
+        }
 
-        const int SAMPLE_STEPS = 16;
-        float rayDistance = t1 - t0;
-       
 
-        float stepLen = rayDistance / (float)SAMPLE_STEPS;
-     
-        float3 totalLuminance = float3(0, 0, 0);
-        float3 throughput = float3(1, 1, 1);
-        
-        float3 rayleighColor = inEnd ? END_RAYLEIGH : RAYLEIGH_SCATTERING_BASE;
-        float3 mieCoeff = GetAtmosphereMieCoefficients(ATMOSPHERE_TURBIDITY);
+            const int SAMPLE_STEPS = 16;
+            float rayDistance = t1 - t0;
+            
 
-        float cosTheta = dot(rayDir, sunDir);
+            float stepLen = rayDistance / (float)SAMPLE_STEPS;
+            
+            float3 totalLuminance = float3(0, 0, 0);
+            float3 throughput = float3(1, 1, 1);
+            
+            float3 rayleighColor = inEnd ? END_RAYLEIGH : RAYLEIGH_SCATTERING_BASE;
+            float3 mieCoeff = GetAtmosphereMieCoefficients(ATMOSPHERE_TURBIDITY);
 
-        float pR = RayleighPhase(cosTheta);
-        float pM = PhaseDraine(cosTheta, SKY_MIE_FORWARD_G, DRAINE_ALPHA);
-        float3 mieSunColor = inEnd
+            float cosTheta = dot(rayDir, sunDir);
+            
+            float pR = RayleighPhase(cosTheta);
+            float pM = KleinNishinaPhase(cosTheta, 2000);
+            float3 mieSunColor = inEnd
             ? END_SUN_COLOR
             : lerp(getSunColor(float4(0.0f, 0.0f, 0.0f, 0.0f)).rgb, float3(1.0f, 0.78f, 0.52f), 0.25f);
-        float3 multiscatterFactor = (rayleighColor * 0.42f) * 0.18f;
 
-    
-        float dither = NextFloat(rng);
 
-        for (int i = 0; i < SAMPLE_STEPS; ++i)
-        {
-            
-            float stepFraction = (float)i + NextFloat(rng);
-            
-            float3 samplePos = rayOrig + rayDir * (t0 + stepLen * stepFraction);
-            
-            
-            float dR, dM, dO;
-            GetLayerDensities(samplePos, dR, dM, dO);
-            
-            float3 extinction = GetExtinction(dR, dM, dO);
-            float3 stepTransmittance = exp(-extinction * stepLen);
-            
+            float3 multiscatterFactor = (rayleighColor * 0.4 * pR ) * 0.18f;
 
-            float3 sunTransmittance = EvaluateAnalyticTransmittance(samplePos, sunDir, dither);
             
-            // Lighting logic
-            float3 mieScattering =
-                dM * (mieCoeff * 0.75f + float3(0.010f, 0.014f, 0.022f)) * pM * SKY_MIE_SCATTERING_STRENGTH;
-            float3 directScattering = (
+            float dither = NextFloat(rng);
+
+            for (int i = 0; i < SAMPLE_STEPS; ++i)
+            {
+                
+                float stepFraction = (float)i + NextFloat(rng);
+                
+                float3 samplePos = rayOrig + rayDir * (t0 + stepLen * stepFraction);
+                
+                
+                float dR, dM, dO;
+                GetLayerDensities(samplePos, dR, dM, dO);
+                
+                float3 extinction = GetExtinction(dR, dM, dO);
+                float3 stepTransmittance = exp(-extinction * stepLen);
+                
+
+                float3 sunTransmittance = EvaluateAnalyticTransmittance(samplePos, sunDir, dither);
+                
+                // Lighting logic
+                float3 mieScattering =
+                dM * (mieCoeff) * pM * SKY_MIE_SCATTERING_STRENGTH;
+                float3 directScattering = (
                 dR * rayleighColor * pR +
                 mieScattering) * sunTransmittance;
-            float3 multiScattering = multiscatterFactor * (dR + dM) * saturate(sunTransmittance + 0.25f);
-            float3 stepLuminance = (directScattering + multiScattering) * sunIntensity;
+                float3 multiScattering = multiscatterFactor * (dR + dM) * saturate(sunTransmittance + 0.25f);
+                float3 stepLuminance = (directScattering + multiScattering) * sunIntensity;
+                
+                float3 safeExtinction = max(extinction, float3(1e-4f, 1e-4f, 1e-4f));
+                float3 integScattering = (stepLuminance - stepLuminance * stepTransmittance) / safeExtinction;
+                totalLuminance += throughput * integScattering;
+                totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.0085)  : totalLuminance;
+                throughput *= stepTransmittance;
+            }
             
-            float3 safeExtinction = max(extinction, float3(1e-4f, 1e-4f, 1e-4f));
-            float3 integScattering = (stepLuminance - stepLuminance * stepTransmittance) / safeExtinction;
-            totalLuminance += throughput * integScattering;
-            totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.0085)  : totalLuminance;
-            throughput *= stepTransmittance;
+            
+            
+
+            //totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.25)  : totalLuminance;
+            if(drawStars)
+            {
+                
+                float nightFactor = smoothstep(0.12f, -0.08f, sunDir.y);
+                totalLuminance += ProceduralStars(rayDir, nightFactor);
+            }
+
+
+            // Fade the sun itself by the atmosphere transmittance so it naturally blends out
+            // as the sun sinks toward the horizon instead of remaining a flat bright disc.
+            float3 sun = getSun(rayDir);
+            
+            
+            return totalLuminance + sun;
         }
-        
-   
-     
-
-    //totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.25)  : totalLuminance;
-    if(drawStars)
-    {
-      
-        float nightFactor = smoothstep(0.12f, -0.08f, sunDir.y);
-        totalLuminance += ProceduralStars(rayDir, nightFactor);
-    }
-
-
-        // Fade the sun itself by the atmosphere transmittance so it naturally blends out
-        // as the sun sinks toward the horizon instead of remaining a flat bright disc.
-        float3 sun = getSun(rayDir);
-   
-     
-	return totalLuminance + sun;
-    }
 
 
 
 
-#endif // SKY_HLSL
+
+    #endif // SKY_HLSL

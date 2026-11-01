@@ -27,7 +27,7 @@
         }
     };
 
-    DirectLight sampleDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in SurfaceInfo surface, float3 N, in float3 geoNormal, in float3 viewDirection, in float3 diffuseWeight, in PathRNG rng)
+    DirectLight sampleDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in SurfaceInfo surface, float3 N, in float3 geoNormal, in float3 viewDirection, in float3 diffuseWeight, in PathRNG rng, in bool hitWater)
     {
         DirectLight light;
         light.setUp(direction, color, intensity, radius, isActive);
@@ -49,11 +49,21 @@
         float3 H = normalize(L + V);
 
         // Necessary dot products
-        float NdotL = max(dot(N, L), 0.0001);
-        float NdotV = max(dot(N, V), 0.0001);
         float NdotH = max(dot(N, H), 0.0001);
         float VdotH = max(dot(V, H), 0.0001);
         
+        float rawNdotL = dot(N, L);
+        float rawNdotV = dot(N, V);
+
+        if (rawNdotL <= 0.0 || rawNdotV <= 0.0)
+        {
+            light.radiance = float3(0.0, 0.0, 0.0);
+            return light;
+        }
+
+        float NdotL = rawNdotL;
+        float NdotV =rawNdotV;
+
         float3 F0 = surface.F0;
         float3 albedo = surface.color * (1.0 - surface.metalness);
 
@@ -69,41 +79,34 @@
             float facingFactor = 0.5 + 2.0 * VdotH * VdotH * surface.roughness;
             float3 hammonShape = transmission * (1.0 + (facingFactor - 1.0) * pow(1.0 - NdotV, 5.0)) 
             * (1.0 + (facingFactor - 1.0) * pow(1.0 - NdotL, 5.0));
-
-            float rawNdotL = dot(N, L);
-            if (rawNdotL < 0.0)
-            {
-                diffuseBRDF = 0.0;
-            }
+            
             // Incorporate material properties and external script constraints
             diffuseBRDF = (hammonShape * albedo * diffuseWeight) / PI;
+      
             
         #else 
             // Default Baseline: Lambert
             float3 kS = fresnelSchlick(VdotH, F0);
-            float3 kD = (1.0 - kS) * (1.0 - surface.metalness); // Ensure metalness constraint matches path tracing
-            
-            float rawNdotL = dot(N, L);
-            if (rawNdotL < 0.0)
-            {
-                diffuseBRDF = 0.0;
-            }
+            float3 kD = (1.0 - kS); // Ensure metalness constraint matches path tracing
+        
             diffuseBRDF = (kD * albedo / PI) * diffuseWeight;
+           
+
         #endif
 
-        float D = D_GGX(NdotH, surface.roughness);
+        float D = D_GGX(NdotH, surface.roughness * surface.roughness);
         float G = G_Smith(NdotV, NdotL, surface.roughness); 
         float3 specularBRDF = (fresnelSchlick(VdotH, F0) * D * G) / (4.0 * NdotV * NdotL);
         float3 BRDF = diffuseBRDF + specularBRDF;
 
         float pdfSun = max(PDF_SunCone(), 1e-4);
-        float3 fogExtinction = GetAtmosphereSunTransmittance(surface.position, ray.Direction, rng, 4);
+        float3 fogExtinction = GetAtmosphereSunTransmittance(surface.position, ray.Direction, rng, hitWater);
         light.color *= light.intensity;
-        light.radiance += light.color  * BRDF * NdotL * light.shadowTransmittance / pdfSun; 
+        light.radiance += light.color  * BRDF * NdotL * light.shadowTransmittance * fogExtinction / pdfSun; 
         return light;
     }
 
-    DirectLight sampleVolumetricDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in float3 position, in float3 rayDir, in PathRNG rng)
+    DirectLight sampleVolumetricDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in float3 position, in float3 rayDir, in PathRNG rng, in bool hitWater)
     {
         DirectLight light;
         light.setUp(direction, color, intensity, radius, isActive);
@@ -119,14 +122,92 @@
         light.shadowTransmittance = payload.transmission;
 
         float pdfSun = max(PDF_SunCone(), 1e-4);
-        float3 fogExtinction = GetAtmosphereSunTransmittance(position, ray.Direction, rng, 4);
+        float3 fogExtinction = GetAtmosphereSunTransmittance(position, ray.Direction, rng, hitWater);
         light.direction = ray.Direction;
         light.color *= light.intensity;
-        light.radiance += light.color * light.shadowTransmittance / pdfSun; 
+        light.radiance =light.color * light.shadowTransmittance * fogExtinction / pdfSun;
         return light;
     }
 
 
+
+
+    /*
+    if (g_view.cpuLightsCount > 0)
+    {
+        uint lightCount = min(g_view.cpuLightsCount, 98304u);
+
+
+        uint lightIndex = lightReservoir.sampleIndex;
+        LightInfo lightInfo = inputLightsBuffer[lightIndex];
+        LightData lightData = UnpackLight(lightInfo.packedData);
+
+        float3 toLight = lightInfo.position - surfaceInfo.position;
+        float lightDistanceSquared = dot(toLight, toLight);
+        float lightDistance = sqrt(max(lightDistanceSquared, 1e-6));
+        float3 lightDirection = toLight / lightDistance;
+        float NdotLight = max(dot(N, lightDirection), 0.0);
+
+        if (NdotLight > 0.0 && lightReservoir.weightSum > 0.0)
+        {
+            float lightDistanceSqClamped = max(lightDistanceSquared, 1e-4);
+            float pHatSelected = luminance(lightData.color) * lightData.intensity * POINT_LIGHT_INTENSITY * NdotLight / lightDistanceSqClamped;
+            FinalizeReservoir(lightReservoir, pHatSelected);
+            float estimatedRadiance = pHatSelected * lightReservoir.W;
+
+            if (estimatedRadiance > 1e-3)
+            {
+                float NdotView = max(dot(N, V), 0.0001);
+                float3 halfVector = normalize(V + lightDirection);
+                float NdotHalf = max(dot(N, halfVector), 0.0001);
+                float VdotHalf = max(dot(V, halfVector), 0.0001);
+                float3 lightFresnel = fresnelSchlick(VdotHalf, F0);
+                float lightDistribution = D_GGX(NdotHalf, surfaceInfo.roughness);
+                float lightGeometry = G_Smith(NdotView, NdotLight, surfaceInfo.roughness);
+                float3 lightSpecular = (lightFresnel * lightDistribution * lightGeometry) /
+                max(4.0 * NdotView * NdotLight, 1e-6);
+
+                float3 localLight = float3(
+                dot(lightDirection, T),
+                dot(lightDirection, B),
+                NdotLight);
+                float3 localView = float3(
+                dot(V, T),
+                dot(V, B),
+                NdotView);
+                float3 diffuseColor = surfaceInfo.color * (1.0 - surfaceInfo.metalness);
+                float3 lightDiffuse =  f_EON(diffuseColor, surfaceInfo.roughness, localLight, localView, USE_ACCURATE_DIFFUSE_BRDF);
+                float3 lightBRDF = isTransparentSurface ? lightSpecular : lightDiffuse + lightSpecular;
+
+                RayDesc lightShadowRay;
+                float3 lightShadowTransmission = 0.0;
+                float lightShadowRadius =  POINT_LIGHT_SHADOW_RADIUS;
+                
+                lightShadowRay.Origin = offset_ray(surfaceInfo.position, ng);
+                lightShadowRay.Direction = randConeJitter(
+                lightDirection,
+                lightShadowRadius,
+                NextFloat2(rng));
+                lightShadowRay.TMin = 0.0;
+                lightShadowRay.TMax = max(lightDistance - 0.55, 0.0);
+
+                shadowPayload lightShadow;
+                TraceShadowRay(lightShadowRay, lightShadow);
+                lightShadowTransmission += lightShadow.transmission;
+                
+                lightShadowTransmission /= float(POINT_LIGHT_SHADOW_SAMPLES);
+
+                float3 lightRadiance = lightData.color * lightData.intensity * POINT_LIGHT_INTENSITY;
+                lightRadiance *= NdotLight / lightDistanceSqClamped;
+                lightRadiance *= lightShadowTransmission;
+                lightRadiance *= lightBRDF;
+                lightRadiance *= lightReservoir.W;
+                totalRadiance += lightRadiance;
+            }
+        }
+    }
+    */
+    
     float3 sampleDirectLight(float3 L, float3 N, float3 V, in SurfaceInfo surface )
     {
         // We need to do NEE for sun 
@@ -138,7 +219,7 @@
         DirectLight dick;
         // set up the struct using the certified 0.8 value
         // order is direction, color, intensity, radius, isActive
-        dick.setUp(0.8.xxx, 0.8.xxx, 0.8, 0.8, true);
+        dick.setUp(0.8.xxx, 0.8.xxx, 0.8, 0.8, bool(ceil(0.8)));
         float3 balls = 0.8.xxx;
         return balls * dick.direction;
     }

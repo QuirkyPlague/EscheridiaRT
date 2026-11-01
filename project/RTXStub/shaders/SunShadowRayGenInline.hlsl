@@ -1,3 +1,4 @@
+
 [numthreads(4, 8, 1)]
 void SunShadowRayGenInline(
     uint3 dispatchThreadID : SV_DispatchThreadID,
@@ -8,4 +9,5 @@ void SunShadowRayGenInline(
 {
     // *cricket noises*
     // Note that g_rootConstant0 from AdaptiveDenoiserCalculateGradients pass is accessible here
+    
 }

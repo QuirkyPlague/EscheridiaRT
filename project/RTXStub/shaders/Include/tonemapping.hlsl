@@ -91,6 +91,9 @@ float3 linearToSRGB(float3 c) {
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// All values used to derive this implementation are sourced from Troy’s initial AgX implementation/OCIO config file available here:
+//   https://github.com/sobotka/AgX
+
 // 0: Default, 1: Golden, 2: Punchy
 #define AGX_LOOK 2
 

@@ -6,8 +6,8 @@ static const uint HISTOGRAM_FIRST_BIN = 1;
 static const uint HISTOGRAM_BIN_COUNT = 255;
 static const float HISTOGRAM_LUMA_FLOOR = 1e-4;
 static const float SKY_PATH_LENGTH_THRESHOLD = 60000.0;
-static const uint SKY_EXPOSURE_WEIGHT = 1.0;
-static const uint TERRAIN_EXPOSURE_WEIGHT = 3.0;
+static const uint SKY_EXPOSURE_WEIGHT = 4.0;
+static const uint TERRAIN_EXPOSURE_WEIGHT = 4.0;
 
 groupshared float tileLuminanceSums[256];
 groupshared uint tileWeightSums[256];

@@ -121,11 +121,13 @@ void Frag(FragmentInput fragInput,inout FragmentOutput fragOutput){
    
     
     #if DISABLE_RASTER_OBJECTS==1
+    #if !WHITE_FURNACE
     hdr=tonemapAgX(hdr);
-    hdr=linearToSRGB(hdr);
+    hdr=LinearToSrgb(hdr);
+    #endif
     #else
     hdr=tonemapAgX(hdr);
-    hdr=linearToSRGB(hdr);
+    hdr=LinearToSrgb(hdr);
     hdr=mix(hdr,raster.rgb,raster.a);
     #endif
 

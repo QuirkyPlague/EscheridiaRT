@@ -119,9 +119,9 @@ void SpecularFireflyFilter(
         // Use a high robust threshold, and never force ordinary low-radiance
         // indirect light down to the near-zero median of a dark neighborhood.
         // Increase epsilon or neighborScale to make filtering gentler.
-        float epsilon = clamp(g_view.denoisingParams[denoisingParamsIndex].despeckleFilterRelativeDifferenceEpsilon, 32.0, 145.0);
-        const float neighborScale = 12.0;
-        const float minimumLuminanceLimit = 32.0;
+        float epsilon = clamp(g_view.denoisingParams[denoisingParamsIndex].despeckleFilterRelativeDifferenceEpsilon, 32.0, 256.0);
+        const float neighborScale = 24.0;
+        const float minimumLuminanceLimit = 16.0;
         float luminanceLimit = max(localMedian * (1.0 + epsilon), localMedian + 8.0 * localMad);
         luminanceLimit = max(luminanceLimit, neighborMaximum * neighborScale);
         luminanceLimit = max(luminanceLimit, minimumLuminanceLimit);

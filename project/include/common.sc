@@ -10,6 +10,31 @@ vec3 linearToSRGB(vec3 c){
     return max(pow(c, 1.0 / 2.2), 0);
 }
 
+vec3 LinearTosRGB(in vec3 color)
+{
+    vec3 x = color * 12.92f;
+    vec3 y = 1.055f * pow(clamp(color,0.0,1.0), vec3(1.0f / 2.4f,1.0f / 2.4f,1.0f / 2.4f)) - 0.055f;
+
+    vec3 clr = color;
+    clr.r = color.r < 0.0031308f ? x.r : y.r;
+    clr.g = color.g < 0.0031308f ? x.g : y.g;
+    clr.b = color.b < 0.0031308f ? x.b : y.b;
+
+    return clr;
+}
+
+float LinearToSrgbBranchingChannel(float lin) {
+    if (lin < 0.00313067)
+        return lin * 12.92;
+    return pow(lin, (1.0 / 2.4)) * 1.055 - 0.055;
+}
+vec3 LinearToSrgb(vec3 lin) {
+    return vec3(LinearToSrgbBranchingChannel(lin.r),
+                  LinearToSrgbBranchingChannel(lin.g),
+                  LinearToSrgbBranchingChannel(lin.b));
+}
+
+
 static const mat3 matrix_rec709_to_xyz=transpose(mat3(.412390917540,.357584357262,.180480793118,.212639078498,.715168714523,.072192311287,.019330825657,.119194783270,.950532138348));
 static const mat3 matrix_xyz_to_p3d65=transpose(mat3(2.49349691194,-.931383617919,-.402710784451,-.829488969562,1.76266406032,.023624685842,.035845830244,-.076172389268,.956884524008));
 static const mat3 matrix_xyz_to_rec2020=transpose(mat3(1.71665118797,-.355670783776,-.253366281374,-.666684351832,1.61648123664,.015768545814,.017639857445,-.042770613258,.942103121235));
@@ -124,19 +149,22 @@ vec3 LinearToPQ(vec3 L_in)
 // 0: Default, 1: Golden, 2: Punchy
 #define AGX_LOOK 2
 
-// Mean error^2: 3.6705141e-06
-vec3 agxDefaultContrastApprox(vec3 x){
-    vec3 x2=x*x;
-    vec3 x4=x2*x2;
-    
-    return 15.5*x4*x2
-    -40.14*x4*x
-    +31.96*x4
-    -6.868*x2*x
-    +.4298*x2
-    +.1191*x
-    -.00232;
+// Mean error^2: 1.85907662e-06
+vec3 agxDefaultContrastApprox(vec3 x) {
+  vec3 x2 = x * x;
+  vec3 x4 = x2 * x2;
+  vec3 x6 = x4 * x2;
+  
+  return - 17.86     * x6 * x
+         + 78.01     * x6
+         - 126.7     * x4 * x
+         + 92.06     * x4
+         - 28.72     * x2 * x
+         + 4.361     * x2
+         - 0.1718    * x
+         + 0.002857;
 }
+
 
 vec3 agx(vec3 val){
     const mat3 agxMat=mat3(
@@ -167,6 +195,8 @@ vec3 agxEotf(vec3 val){
     
     val=mul(agxMatInv,val);
     
+     val = max(0..xxx, val);
+
     // Remove this conversion if NOT writing to an sRGB framebuffer.
     #if ENABLE_HDR
     val=pow(val,vec3(2.2,2.2,2.2));
@@ -184,17 +214,11 @@ vec3 reinhard(vec3 v)
     return v / (1.0f + v);
 }
 
-vec3 reinhard_jodie(vec3 v){
-    float l=luminance(v);
-    vec3 tv=v/(1.f+v);
-    return(mix(v/(1.f+l),tv,tv));
-}
-
 vec3 agxLook(vec3 val){
     vec3 offset=vec3(0.,0.,0.);
-    vec3 slope=vec3(1.,1.,1.);
+    vec3 slope=vec3(1.0.xxx);
     vec3 power=vec3(1.,1.,1.);
-    float sat=1.06;
+    float sat=1.22;
     
     #if AGX_LOOK==1
     // Golden
@@ -203,7 +227,7 @@ vec3 agxLook(vec3 val){
     sat=.8;
     #elif AGX_LOOK==2
     // Punchy
-    power=vec3(1.4,1.4,1.4);
+    power=vec3(1.52,1.52,1.52);
     #endif
     
     val=pow(max(val*slope+offset,vec3(0.,0.,0.)),power);
@@ -219,6 +243,14 @@ vec3 tonemapAgX(vec3 color){
     color=agxLook(color);
     return agxEotf(color);
 }
+
+vec3 reinhard_jodie(vec3 v){
+    float l=luminance(v);
+    vec3 tv=v/(1.f+v);
+    return(mix(v/(1.f+l),tv,tv));
+}
+
+
 
 vec3 chromaticAberration(vec2 uv,sampler2D bufferSampler)
 {

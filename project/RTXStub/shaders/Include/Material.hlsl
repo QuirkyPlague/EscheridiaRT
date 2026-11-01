@@ -28,7 +28,9 @@
     #include "Constants.hlsl"
     #include "Util.hlsl"
     #include "Water.hlsl"
-
+    #include "colors.hlsl"
+    
+    
 
     struct HitInfo
     {
@@ -438,6 +440,12 @@
             vertColor.rgb = lerp(vertColor.rgb, 1.xxx, color.a);
         }
 
+        if (objectInstance.flags & kObjectInstanceFlagRemapTransparencyAlpha)
+        {
+            color.a = saturatedLinearRemapZeroToOne(color.a, 0.5, 1.0f);
+        }
+
+        
         // Some surfaces (doors, clouds) have baked-in vanilla shading in vertex color. This code detects and removes this shading, leaving pure unshaded albedo.
         bool isTintShadedSurface = objectInstance.flags & (kObjectInstanceFlagChunk | kObjectInstanceFlagClouds) 
         && !(objectInstance.flags & kObjectInstanceFlagHasSeasonsTexture) 
@@ -451,10 +459,7 @@
         color.rgb *= vertColor.rgb;
         if (objectInstance.flags & kObjectInstanceFlagChunk) color.a *= vertColor.a;
 
-        if (objectInstance.flags & kObjectInstanceFlagRemapTransparencyAlpha)
-        {
-            // Remap alpha of transparent things into transmittance (not needed for this template shader)
-        }
+        
 
         // ChangeColor
         float4 tintColor0 = unpackObjectInstanceTintColor(objectInstance.tintColour0);
@@ -490,7 +495,11 @@
         {
             color.rgb = lerp(color.rgb, tintColor1.rgb, tintColor1.a);
         }
+        // textures are in srgb
+        // the render target needs to be linear
 
+        color.rgb =  SRGBToLinear(color.rgb);
+        
         // Gather PBR data
         if (geometryInfo.pbrTextureDataIndex != kInvalidPBRTextureHandle)
         {
@@ -597,19 +606,39 @@
         //if (!hitInfo.frontFacing) surfaceInfo.normal = -surfaceInfo.normal;
         // small albedo reduction to avoid overly bright surfaces
         surfaceInfo.color = color.rgb;
-             #if WHITE_FURNACE == 1
+        
+
+        #if WHITE_FURNACE == 1
             surfaceInfo.color = 1.0;
             surfaceInfo.emissive = 0.0;
         #endif
-        surfaceInfo.color = pow(surfaceInfo.color, 2.2);
-        
         F0 = lerp(F0, surfaceInfo.color, surfaceInfo.metalness);
         surfaceInfo.F0 = F0;
         surfaceInfo.alpha = color.a;
 
-   
+        
 
         return surfaceInfo;
+    }
+
+
+    bool AlphaTestHitLogic1(HitInfo hitInfo)
+    {
+        #if CULL_GLASS_BACK_FACES
+            if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !hitInfo.frontFacing)
+            return false;
+        #endif
+        // If this logic runs for non-alphatested things, always register a hit.
+        if (hitInfo.materialType != MATERIAL_TYPE_ALPHA_TEST)
+        return true;
+
+        // Tip: instead of calculating material every time, you can calculate UVs during CalculateFaceData pass and cache them in faceUvBuffers.
+        // Then during alpha testing, cached UVs can be used to sample texture(s) instead of using expensive material and geometry computations.
+        ObjectInstance obj = objectInstances[hitInfo.objectInstanceIndex];
+        GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, obj);
+        SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, obj);
+
+        return !surfaceInfo.shouldDiscard;
     }
 
     // creating a struct for the water material set up since it has more going on
@@ -623,13 +652,13 @@
         float3 F0;
         float3 IOR;
         
-        void SetUp(inout SurfaceInfo surface, in GeometryInfo geom, in float3 direction, in int bounceCount, inout float hitDist, inout float parallaxHeight)
+        void SetUp(inout SurfaceInfo surface, in GeometryInfo geom, in float3 direction, in int bounceCount, inout float hitDist, inout float parallaxHeight, in RayDesc ray)
         {
             IOR = float3(1.333, 1.333, 1.333); // Default IOR for water
-            color = surface.color;
+            color = 1.0;
             roughness = 0.035;
             metalness = 0.0;
-            alpha = surface.alpha;
+            alpha = surface.alpha ;
             F0 = 0.02.xxx;
             // Initialize normal to the surface normal as a fallback just in case
             normal = surface.normal;
@@ -641,8 +670,9 @@
             float waveFade = 1.0 - smoothstep(WAVE_FADE_START, WAVE_FADE_END, distanceFromPlayer);
 
             float3 flatNormal = geom.geometryNormal;
+            /*
             GerstnerSample wave;
-
+            
             #if ENABLE_WATER_PARALLAX
                 float3 displacedPos = surface.position;
                 parallaxHeight = EvaluateWaterParallax(
@@ -656,10 +686,7 @@
                 wave
                 );
                 surface.position = displacedPos;
-                if (bounceCount == 0)
-                {
-                    hitDist += parallaxHeight;
-                }
+              
             #else
                 float3 worldPos = surfaceInfo.position - g_view.waveWorksOriginInSteveSpace;
                 worldPos = worldPos - floor(worldPos / 1024.0) * 1024.0;
@@ -680,9 +707,11 @@
             float fade = 1.15 - exp(-distanceFromPlayer / 32);
 
             roughness = lerp(0.235, roughness, waveFade);
+            */
+
+           
             
-
-
+        
             surface.roughness = roughness;
             surface.metalness = metalness;
             surface.alpha = alpha;
