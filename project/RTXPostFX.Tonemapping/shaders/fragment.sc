@@ -94,7 +94,7 @@ void Frag(FragmentInput fragInput,inout FragmentOutput fragOutput){
     
     hdr=(hdr+BLOOM_MULTIPLIER*bloomRainIntensity*gBloomMultiplier.x*bloom);
     
-    hdr*=exposure;
+    hdr *=exposure;
     
     // Large positive exposure compensation indicates a globally dark scene.
     // Using the smoothed global exposure avoids triggering the shift just

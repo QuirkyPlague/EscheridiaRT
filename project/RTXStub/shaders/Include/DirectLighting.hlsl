@@ -47,6 +47,11 @@
 
         float3 V = normalize(viewDirection);
         float3 H = normalize(L + V);
+        float3 Ng = normalize(geoNormal);
+        if (dot(Ng, V) < 0.0)
+        {
+            Ng = -Ng;
+        }
 
         // Necessary dot products
         float NdotH = max(dot(N, H), 0.0001);
@@ -55,7 +60,8 @@
         float rawNdotL = dot(N, L);
         float rawNdotV = dot(N, V);
 
-        if (rawNdotL <= 0.0 || rawNdotV <= 0.0)
+        if (rawNdotL <= 0.0 || rawNdotV <= 0.0 ||
+            dot(Ng, L) <= 0.0 || dot(Ng, V) <= 0.0)
         {
             light.radiance = float3(0.0, 0.0, 0.0);
             return light;
@@ -96,17 +102,20 @@
 
         float D = D_GGX(NdotH, surface.roughness * surface.roughness);
         float G = G_Smith(NdotV, NdotL, surface.roughness); 
+         float3 fogExtinction = GetAtmosphereSunTransmittance(surface.position, ray.Direction, rng, hitWater);
+
         float3 specularBRDF = (fresnelSchlick(VdotH, F0) * D * G) / (4.0 * NdotV * NdotL);
-        float3 BRDF = diffuseBRDF + specularBRDF;
+        float shadingNormalCorrection = ShadingNormalCorrectionRadiance(L, V, Ng, N);
+        float3 BRDF = ((diffuseBRDF) + specularBRDF) * shadingNormalCorrection;
 
         float pdfSun = max(PDF_SunCone(), 1e-4);
-        float3 fogExtinction = GetAtmosphereSunTransmittance(surface.position, ray.Direction, rng, hitWater);
+       
         light.color *= light.intensity;
         light.radiance += light.color  * BRDF * NdotL * light.shadowTransmittance * fogExtinction / pdfSun; 
         return light;
     }
 
-    DirectLight sampleVolumetricDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in float3 position, in float3 rayDir, in PathRNG rng, in bool hitWater)
+    DirectLight sampleVolumetricDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in float3 position, in float3 rayDir, in PathRNG rng, in bool hitWater, in bool isSSSMedium, in float3 sigmaT)
     {
         DirectLight light;
         light.setUp(direction, color, intensity, radius, isActive);
@@ -118,7 +127,14 @@
         ray.Direction = randConeJitter(light.direction, light.radius, NextFloat2(rng));
         ray.TMin = 0.000;
         ray.TMax = 1000;
-        TraceShadowRay(ray, payload);
+        if (isSSSMedium)
+        {
+            TraceSSSShadowRay(ray, sigmaT, payload);
+        }
+        else
+        {
+            TraceShadowRay(ray, payload);
+        }
         light.shadowTransmittance = payload.transmission;
 
         float pdfSun = max(PDF_SunCone(), 1e-4);

@@ -16,5 +16,5 @@ void Atrous(
     
     // Index for g_view.denoisingParams[];
     uint denoisingParamsIndex = (g_rootConstant0 >> 24) % 2;
-    // Note the modulo. Sometimes game supplies index which goes out of array bounds.
+   
 }

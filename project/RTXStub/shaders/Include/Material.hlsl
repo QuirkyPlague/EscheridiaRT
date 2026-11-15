@@ -498,7 +498,7 @@
         // textures are in srgb
         // the render target needs to be linear
 
-        color.rgb =  SRGBToLinear(color.rgb);
+        //color.rgb =  SRGBToLinear(color.rgb);
         
         // Gather PBR data
         if (geometryInfo.pbrTextureDataIndex != kInvalidPBRTextureHandle)
@@ -537,6 +537,7 @@
                     float2 texel = colorTex.SampleLevel(pointSampler, normalUV, 0).rg;
                     texel = 2 * texel - 1;
                     texNormal = float3(texel, sqrt(max(0, 1 - texel.x * texel.x - texel.y * texel.y)));
+                    //texNormal.xy = lerp(texNormal.xy, texNormal.xy * 0.5, 0.5);
                 }
                 else if (pbr.flags & kPBRTextureDataFlagHasPackedHeightNormalsTexture)
                 {
@@ -607,11 +608,14 @@
         // small albedo reduction to avoid overly bright surfaces
         surfaceInfo.color = color.rgb;
         
-
+        surfaceInfo.color = SRGBToLinear(surfaceInfo.color);
         #if WHITE_FURNACE == 1
-            surfaceInfo.color = 1.0;
-            surfaceInfo.emissive = 0.0;
+            surfaceInfo.color = 1.0.xxx;
+            //surfaceInfo.roughness = 0.86;
+            surfaceInfo.metalness = 0.0;
+            //surfaceInfo.emissive = 0.0;
         #endif
+        //surfaceInfo.color = SRGBToLinear(surfaceInfo.color);
         F0 = lerp(F0, surfaceInfo.color, surfaceInfo.metalness);
         surfaceInfo.F0 = F0;
         surfaceInfo.alpha = color.a;
@@ -656,12 +660,17 @@
         {
             IOR = float3(1.333, 1.333, 1.333); // Default IOR for water
             color = 1.0;
-            roughness = 0.035;
+            roughness = 0.00;
             metalness = 0.0;
             alpha = surface.alpha ;
             F0 = 0.02.xxx;
             // Initialize normal to the surface normal as a fallback just in case
             normal = surface.normal;
+            #if ENABLE_WATER_DIFFUSE
+                alpha = surface.alpha;
+            #else
+                alpha = 0.0;
+            #endif
 
             float2 playerXZ = g_view.viewOriginSteveSpace.xz;
             float2 waterXZ = surface.position.xz;
@@ -670,9 +679,9 @@
             float waveFade = 1.0 - smoothstep(WAVE_FADE_START, WAVE_FADE_END, distanceFromPlayer);
 
             float3 flatNormal = geom.geometryNormal;
-            /*
-            GerstnerSample wave;
             
+            GerstnerSample wave;
+            /*
             #if ENABLE_WATER_PARALLAX
                 float3 displacedPos = surface.position;
                 parallaxHeight = EvaluateWaterParallax(
@@ -716,6 +725,7 @@
             surface.metalness = metalness;
             surface.alpha = alpha;
             surface.normal = normal;
+            surface.F0 = F0;
         }
     };
 

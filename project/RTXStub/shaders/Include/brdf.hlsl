@@ -121,7 +121,7 @@
         return (lightScatter * viewScatter * energyFactor / PI);
     }
 
-  float D_GGX(float NdotH, float roughness) {
+    float D_GGX(float NdotH, float roughness) {
         float r = max(roughness, 0.001);
         float a = r;
         float a2 = a * a;
@@ -149,11 +149,11 @@
     }
 
     float V_SmithGGXCorrelated(float NoV, float NoL, float roughness) {
-    float a2 = roughness * roughness;
-    float GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);
-    float GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);
-    return 0.5 / (GGXV + GGXL);
-}
+        float a2 = roughness * roughness;
+        float GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);
+        float GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);
+        return 0.5 / (GGXV + GGXL);
+    }
     
     
 
@@ -330,19 +330,19 @@
         return (diffuseBRDF * NdotL) / (localDiffusePdf * max(diffProb, 1e-4)); 
     }
 
- float ApproxDirectionalAlbedo(float NdotV, float roughness)
-{
-    float x = saturate(NdotV);
+    float ApproxDirectionalAlbedo(float NdotV, float roughness)
+    {
+        float x = saturate(NdotV);
 
-    // Your renderer uses perceptual roughness:
-    // alpha = roughness^2 for GGX.
-    float alpha = max(roughness * roughness, 0.001);
+        // Your renderer uses perceptual roughness:
+        // alpha = roughness^2 for GGX.
+        float alpha = max(roughness * roughness, 0.001);
 
-    float x2 = x * x;
-    float y2 = alpha * alpha;
-    float xy = x * alpha;
+        float x2 = x * x;
+        float y2 = alpha * alpha;
+        float xy = x * alpha;
 
-    float4 r =
+        float4 r =
         float4(0.1003, 0.9345, 1.0, 1.0)
         + float4(-0.6303, -2.323, -1.765, 0.2281) * x
         + float4(9.748, 2.229, 8.263, 15.94) * alpha
@@ -353,66 +353,66 @@
         + float4(19.99, 0.2913, 15.86, 300.2) * x * y2
         + float4(-5.448, 0.6286, 33.37, -285.1) * x2 * y2;
 
-    float2 AB = saturate(r.xy / max(r.zw, 1e-5));
+        float2 AB = saturate(r.xy / max(r.zw, 1e-5));
 
-    // F0 = F90 = 1 gives the directional albedo
-    // of the fully reflective single-scattering GGX model.
-    return saturate(AB.x + AB.y);
-}
+        // F0 = F90 = 1 gives the directional albedo
+        // of the fully reflective single-scattering GGX model.
+        return saturate(AB.x + AB.y);
+    }
 
     float ApproxAverageAlbedo(float roughness)
-{
-    // Four-point Gauss-Legendre quadrature over mu in [0, 1].
-    // E_avg = 2 * integral(E(mu) * mu, 0, 1).
+    {
+        // Four-point Gauss-Legendre quadrature over mu in [0, 1].
+        // E_avg = 2 * integral(E(mu) * mu, 0, 1).
 
-    const float mu0 = 0.0694318442;
-    const float mu1 = 0.3300094782;
-    const float mu2 = 0.6699905218;
-    const float mu3 = 0.9305681558;
+        const float mu0 = 0.0694318442;
+        const float mu1 = 0.3300094782;
+        const float mu2 = 0.6699905218;
+        const float mu3 = 0.9305681558;
 
-    const float w0 = 0.1739274226;
-    const float w1 = 0.3260725774;
-    const float w2 = 0.3260725774;
-    const float w3 = 0.1739274226;
+        const float w0 = 0.1739274226;
+        const float w1 = 0.3260725774;
+        const float w2 = 0.3260725774;
+        const float w3 = 0.1739274226;
 
-    float E0 = ApproxDirectionalAlbedo(mu0, roughness);
-    float E1 = ApproxDirectionalAlbedo(mu1, roughness);
-    float E2 = ApproxDirectionalAlbedo(mu2, roughness);
-    float E3 = ApproxDirectionalAlbedo(mu3, roughness);
+        float E0 = ApproxDirectionalAlbedo(mu0, roughness);
+        float E1 = ApproxDirectionalAlbedo(mu1, roughness);
+        float E2 = ApproxDirectionalAlbedo(mu2, roughness);
+        float E3 = ApproxDirectionalAlbedo(mu3, roughness);
 
-    float Eavg = 2.0 * (
+        float Eavg = 2.0 * (
         w0 * E0 * mu0 +
         w1 * E1 * mu1 +
         w2 * E2 * mu2 +
         w3 * E3 * mu3
-    );
+        );
 
-    return saturate(Eavg);
-}
+        return saturate(Eavg);
+    }
 
-   float3 KullaContyMultipleScattering(
+    float3 KullaContyMultipleScattering(
     float NdotV,
     float NdotL,
     float roughness,
     float3 F0)
-{
-    float E_v = ApproxDirectionalAlbedo(NdotV, roughness);
-    float E_l = ApproxDirectionalAlbedo(NdotL, roughness);
-    float E_avg = ApproxAverageAlbedo(roughness);
+    {
+        float E_v = ApproxDirectionalAlbedo(NdotV, roughness);
+        float E_l = ApproxDirectionalAlbedo(NdotL, roughness);
+        float E_avg = ApproxAverageAlbedo(roughness);
 
-    float3 F_avg = F0 + (1.0 - F0) / 21.0;
+        float3 F_avg = F0 + (1.0 - F0) / 21.0;
 
-    float3 F_ms =
+        float3 F_ms =
         (F_avg * F_avg * E_avg) /
         max(1.0 - F_avg * (1.0 - E_avg), 1e-5);
 
-    float energyLossV = 1.0 - E_v;
-    float energyLossL = 1.0 - E_l;
+        float energyLossV = 1.0 - E_v;
+        float energyLossL = 1.0 - E_l;
 
-    float denominator = max(PI * (1.0 - E_avg), 1e-5);
+        float denominator = max(PI * (1.0 - E_avg), 1e-5);
 
-    return F_ms * (energyLossV * energyLossL) / denominator;
-}
+        return F_ms * (energyLossV * energyLossL) / denominator;
+    }
 
     float3 specularBRDFGGX(float3 N, float3 L, float3 V, float3 F0, float3 H, float roughness,float specularProbability) 
     {
@@ -426,19 +426,17 @@
         float3 F = fresnelSchlick(VdotH, F0); 
         float D = D_GGX(NdotH, roughness * roughness);
         float G = G_Smith(NdotV, NdotL, roughness); 
-        float3 specWeight = (F * D * G) / (4.0 * NdotV * NdotL);
-        
+
         if (NdotL <= 0.0 || NdotV <= 0.0)
         {
             return float3(0.0, 0.0, 0.0);
         }
 
-       float3 singleScatterBRDF =
-    (F * D * G) / (4.0 * NdotV * NdotL);
+        float3 singleScatterBRDF = (F * D * G) / (4.0 * NdotV * NdotL);
 
-float3 multipleScatterBRDF =KullaContyMultipleScattering(NdotV, NdotL, roughness, F0);
+        float3 multipleScatterBRDF =KullaContyMultipleScattering(NdotV, NdotL, roughness, F0);
 
-float3 combinedBRDF = singleScatterBRDF + multipleScatterBRDF;
+        float3 combinedBRDF = singleScatterBRDF + multipleScatterBRDF;
 
         float pdf_r = PDF_GGX_Reflection(NdotV, NdotH, VdotH, roughness); 
         float combinedPdf = max(pdf_r, 1e-6); 

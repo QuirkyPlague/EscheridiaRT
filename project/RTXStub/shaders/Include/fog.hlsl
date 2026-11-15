@@ -460,39 +460,33 @@ float3 SampleApproximateMie(
     float gD,
     float alpha,
     float draineWeight,
-    PathRNG rng,
+    inout PathRNG rng,
     out float pdf,
-    out float exactCosTheta) // <-- Add this output parameter
+    out float exactCosTheta)
 {
     forward = normalize(forward);
     draineWeight = saturate(draineWeight);
     alpha = max(alpha, 0.0f);
 
-    float lobeSelector = NextFloat(rng);
-    float2 xi = NextFloat2(rng); 
-    
-    float phi = 2.0f * 3.14159265f * xi.y;
+    bool sampleDraine = NextFloat(rng) < draineWeight;
+    float g = sampleDraine ? clamp(gD, -0.99f, 0.99f) : clamp(gHG, -0.99f, 0.99f);
+    [loop]
+    while (true)
+    {
+        float xi = NextFloat(rng);
+        float t = 2.0f * xi - 1.0f;
+        float g2 = g * g;
+        float denom = 1.0f + g * t;
+        exactCosTheta = (2.0f * t * (1.0f + g2) + g * (3.0f + t * t) + g * g2 * (t * t - 1.0f))
+            / (2.0f * denom * denom);
+        exactCosTheta = clamp(exactCosTheta, -1.0f, 1.0f);
 
-    if (lobeSelector < draineWeight)
-    {
-        float guardedGD = clamp(gD, -0.99f, 0.99f); 
-        exactCosTheta = sampleDraineCos(xi.x, guardedGD, alpha);
-    }
-    else
-    {
-        float guardedGHG = clamp(gHG, -0.99f, 0.99f);
-        if (abs(guardedGHG) < 1e-3f)
-        {
-            exactCosTheta = 1.0f - 2.0f * xi.x;
-        }
-        else
-        {
-            float s = (1.0f - guardedGHG * guardedGHG) / (1.0f - guardedGHG + 2.0f * guardedGHG * xi.x);
-            exactCosTheta = (1.0f + guardedGHG * guardedGHG - s * s) / (2.0f * guardedGHG);
-        }
+        // Draine is HG multiplied by (1 + alpha * cosTheta^2).
+        if (!sampleDraine || NextFloat(rng) * (1.0f + alpha) <= 1.0f + alpha * exactCosTheta * exactCosTheta)
+            break;
     }
 
-    exactCosTheta = clamp(exactCosTheta, -1.0f, 1.0f);
+    float phi = 2.0f * PI * NextFloat(rng);
     float sinTheta = sqrt(max(0.0f, 1.0f - exactCosTheta * exactCosTheta));
 
     float3 tangent;
@@ -520,7 +514,7 @@ float3 SampleApproximateMie(
     float alpha,
     float2 xi,
     PathRNG rng,
-    out float pdf)
+    out float pdf, inout float exactCosTheta)
     {
         forward = normalize(forward);
 
@@ -578,7 +572,8 @@ float3 SampleApproximateMie(
 
                 nextDirection = normalize(nextDirection);
 
-                pdf = PhaseDraine(cosTheta, g, alpha);
+                pdf = evalDraine(cosTheta, g, alpha);
+                exactCosTheta = cosTheta;
 
                 return nextDirection;
             }
@@ -665,7 +660,7 @@ float3 SampleApproximateMie(
 
         float3 transmittance = 1.0;
 
-        while (true)
+         for(int i = 0; i < 100; i++)
         {
             float xi = max(NextFloat(rng), 1e-6f);
             t += -log(xi) / majorant;
@@ -689,4 +684,3 @@ float3 SampleApproximateMie(
     
 
 #endif //FOG_HLSL
-

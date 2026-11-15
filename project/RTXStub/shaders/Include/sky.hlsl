@@ -234,7 +234,7 @@
         return color;
     }
 
-    float3 getSun(float3 dir) {
+    float3 getSun(float3 dir, bool drawSunDisc) {
         float3 sunDir = inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
         float3 moonDir = getTrueDirectionToMoon();
         float cosThetaSun = dot(dir, sunDir);
@@ -318,7 +318,7 @@
         float3 moonColor =  float3(0.12, 0.321,0.65);
         float3 fullmoon = inEnd ? 0.0 : moon * moonColor * sunHeightFactor;
 
-        float3 celestial = fullSun + fullmoon;
+        float3 celestial = (drawSunDisc ? fullSun : 0.0.xxx) + fullmoon;
 
         return celestial;
     }
@@ -380,10 +380,10 @@
     static const float  ATM_RADIUS_KM   = 6420.0f;
     static const float  EARTH_RADIUS = EARTH_RADIUS_KM;
     static const float  ATM_RADIUS   = ATM_RADIUS_KM;
-    static const float  H_RAYLEIGH   =  inEnd ? 24.55f : 12.0f;
-    static const float  H_MIE        = inEnd ? 1.7f : 2.2f;
+    static const float  H_RAYLEIGH   =  inEnd ? 24.55f : 8.0f;
+    static const float  H_MIE        = inEnd ? 1.7f : 1.2f;
 
-    static const float3 BETA_RAYLEIGH = float3(4.202f, 12.558f, 24.100f) * 1e-3f;
+    static const float3 BETA_RAYLEIGH = float3(4.202f, 12.558f, 29.100f) * 1e-3f;
     static const float3 END_RAYLEIGH = float3(2.32f, 0.26f, 13.56f) * 1e-3f;
     static const float3 RAIN_RAYLEIGH = float3(33.202f, 33.558f, 33.900f) * 1e-3f;
 
@@ -392,7 +392,7 @@
 
     // Ozone absorption (Chappuis band) - keep the same color tint and scale as the older
     // tuned values, but in the analytic km-based model.
-    static const float3 BETA_OZONE_ABSORPTION =  inEnd ? float3(0.0003839,0.009648, 0.000208) : float3(0.002139,0.001748, 0.000168);
+    static const float3 BETA_OZONE_ABSORPTION =  inEnd ? float3(0.0003839,0.009648, 0.000208) : float3(0.001854,0.001648, 0.000138);
 
 
     // [PRE99], see also https://www.desmos.com/calculator/giz0uiar7k
@@ -554,7 +554,7 @@
 
 
 
-    float3 RenderHillaireAnalytical(float3 cameraPosKm, float3 rayDir, float3 sunDir, float  sunIntensity,PathRNG rng, bool drawStars)
+    float3 RenderHillaireAnalytical(float3 cameraPosKm, float3 rayDir, float3 sunDir, float  sunIntensity,PathRNG rng, bool drawStars, bool drawSunDisc)
     {
         
         float3 rayOrig = cameraPosKm + float3(0.0f, EARTH_RADIUS + 0.001f, 0.0f);
@@ -651,7 +651,7 @@
 
             // Fade the sun itself by the atmosphere transmittance so it naturally blends out
             // as the sun sinks toward the horizon instead of remaining a flat bright disc.
-            float3 sun = getSun(rayDir);
+            float3 sun = getSun(rayDir, drawSunDisc);
             
             
             return totalLuminance + sun;

@@ -218,7 +218,7 @@ vec3 agxLook(vec3 val){
     vec3 offset=vec3(0.,0.,0.);
     vec3 slope=vec3(1.0.xxx);
     vec3 power=vec3(1.,1.,1.);
-    float sat=1.22;
+    float sat=1.32;
     
     #if AGX_LOOK==1
     // Golden
@@ -227,7 +227,7 @@ vec3 agxLook(vec3 val){
     sat=.8;
     #elif AGX_LOOK==2
     // Punchy
-    power=vec3(1.52,1.52,1.52);
+    power=vec3(1.42,1.42,1.42);
     #endif
     
     val=pow(max(val*slope+offset,vec3(0.,0.,0.)),power);

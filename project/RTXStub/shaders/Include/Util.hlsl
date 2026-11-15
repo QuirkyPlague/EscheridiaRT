@@ -386,6 +386,30 @@ float3 FixShadingNormal(float3 Ng, float3 Ns)
 
     return Ns;
 }
+
+float ShadingNormalCorrectionRadiance(float3 wi, float3 wo, float3 Ng, float3 Ns)
+{
+    // Radiance-mode correction for reflected directions pointing away from the surface.
+    float wiNg = dot(wi, Ng);
+    float woNg = dot(wo, Ng);
+    float wiNs = dot(wi, Ns);
+    float woNs = dot(wo, Ns);
+
+    if (wiNg <= 0.0 || woNg <= 0.0 || wiNs <= 0.0 || woNs <= 0.0)
+    {
+        return 0.0;
+    }
+
+    float denominator = wiNg * woNs;
+    if (denominator <= 1e-8)
+    {
+        return 0.0;
+    }
+
+    float correction = (wiNs * woNg) / denominator;
+    return min(correction, 4.0);
+}
+
 float PDF_SunCone()
 {
     float cosThetaMax = cos(inEnd ? END_SUN_RADIUS : SUN_RADIUS);

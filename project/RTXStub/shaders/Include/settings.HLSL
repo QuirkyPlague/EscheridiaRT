@@ -12,11 +12,14 @@
 #define USE_SPECTRAL 0
 
 #define DO_SAMPLE_LIMITS 0
-#define MAX_ACCUMULATED_SAMPLES 64
-#define MAX_BOUNCES 10
+#define MAX_ACCUMULATED_SAMPLES 256
+#define MAX_BOUNCES 20
 
 // White furnace test
 #define WHITE_FURNACE 0
+
+// If enabled, water will have its alpha channel enabled allowing diffuse contribution, otherwise alpha will be 0.
+#define ENABLE_WATER_DIFFUSE 0
 
 // This will enable an HDR color space to use with your HDR monitor
 // This WILL require an external plugin like Reshade or Special K
@@ -36,7 +39,7 @@
 
 // This disables objects that are not raytraced (sign text, particles stars). This will disable the menu panorama 
 // Use this if you want those to not appear in front of DOF for renders
-#define DISABLE_RASTER_OBJECTS 1
+#define DISABLE_RASTER_OBJECTS 0
 
 // Lighting Parameters
 #define SUN_AZIMUTH               (0.741)                   // Vanilla: 0.0
@@ -52,12 +55,12 @@
 // 0.0-5.0 = close range shots
 // 6.0 - 15.0 midrange shot
 // 16.0+ = long range shot
-#define DOF_FOCAL_DISTANCE 27.25f
+#define DOF_FOCAL_DISTANCE 12.25f
 
 
 // Blur does not scale with focal distance
 // Longer focal distance needs more blur if you want a very focused shot
-#define DOF_BLUR_STRENGTH 230.725f 
+#define DOF_BLUR_STRENGTH 140.725f 
 
 
 // 0 = circular 
@@ -73,12 +76,12 @@
 // Also makes sunlight brighter or darker
 // If radius is made larger sun is more intense
 // Recommended to reduce sunlight intensity if increased
-#define SUN_RADIUS   0.00465f 
-#define SUN_DISC_RADIUS 0.00465f 
+#define SUN_RADIUS   0.00465f * 2.5
+#define SUN_DISC_RADIUS 0.00465f * 2.5
 #define SUN_DISC_EDGE_SOFTNESS 0.08f
 #define SUN_DISC_LIMB_DARKENING 0.6f
-#define SUN_DISC_INTENSITY 50.0f
-#define SUN_INTENSITY 16
+#define SUN_DISC_INTENSITY 25.0f
+#define SUN_INTENSITY 13.4
 #define RAIN_SUN_INTENSITY_MULTIPLIER 0.045
 #define RAIN_BLOOM_BOOST 1.6
 #define COMPUTE_BLOOM_STRENGTH 0.175f
@@ -91,7 +94,7 @@
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
 #define POINT_LIGHT_SHADOW_RADIUS 0.0325
-#define EMISSION_STENGTH  5.7
+#define EMISSION_STENGTH  4.35
 
 #define POINT_LIGHT_INTENSITY 50.0
 // Number of candidate lights streamed through the RIS reservoir before tracing a single shadow ray.
@@ -120,7 +123,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define DAY_SUN_COLOR float4(1.0,0.7925,0.475, 1.17)
 #define NOON_SUN_COLOR float4(1.0,0.95,0.75, 1.14)
 #define SUNRISE_SUN_COLOR float4(1.0,0.4737,0.175, 1.15)
-#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.56)
+#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.66)
 
 // End dimension settings
 #define ENABLE_END_SUNLIGHT 1
@@ -166,7 +169,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define FOG_FADE_START 32
 #define FOG_FADE_END 286
 //sky intensity multipliers
-#define RAYLEIGH_MULT                  1.3 //brightness of the sky
+#define RAYLEIGH_MULT                  1.0 //brightness of the sky
 #define SKY_MIE_SCATTERING_STRENGTH    0.15   // atmospheric Mie brightness multiplier
 #define SKY_MIE_FORWARD_G              0.82  // higher values make the Mie lobe more forward-scattering
 
@@ -226,14 +229,14 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define WAVE_PULL                                           (0.34235)
 
 #define WAVE_STEEPNESS 0.04
-#define WAVE_HEIGHT  0.065
-#define WAVE_BASE_WAVELENGTH 7.8f
+#define WAVE_HEIGHT  0.045
+#define WAVE_BASE_WAVELENGTH 5.8f
 #define WAVE_COUNT 9
 
 // Gerstner Micro Wave Details (Inter-octave ripples and high-frequency capillary texture)
 #define ENABLE_MICRO_WAVES          1       // 1 = Enable micro wave details between octaves, 0 = base octaves only
 #define WAVE_MICRO_WAVES_PER_OCTAVE 2       // Number of intermediate micro waves between each octave (1 or 2)
-#define WAVE_MICRO_AMPLITUDE_MULT   0.45f   // Amplitude scale of micro waves relative to parent octave
+#define WAVE_MICRO_AMPLITUDE_MULT   0.15f   // Amplitude scale of micro waves relative to parent octave
 #define WAVE_MICRO_FREQUENCY_MULT   1.95f   // Frequency multiplier for the in-between micro waves
 #define WAVE_MICRO_STEEPNESS        0.015f   // Sharpness / steepness factor for micro wave crests
 #define WAVE_MICRO_CHOP_ANGLE       23.15f   // Directional cross-angle offset (radians) creating 2D surface chop
@@ -246,26 +249,26 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 
 
 
-#define AGX_MIN_EV -18.145
-#define AGX_MAX_EV 4.5
+#define AGX_MIN_EV -15.645
+#define AGX_MAX_EV 5.0
 
 #define AUTO_EXPOSURE_MIN -12.0
 #define AUTO_EXPOSURE_MAX 6.0
 
-#define EXPOSURE_MIN -3.35
+#define EXPOSURE_MIN -1.1
 #define EXPOSURE_MAX 6.0
-#define EXPOSURE_MAX_DAY 6.5
+#define EXPOSURE_MAX_DAY 6.0
 #define EXPOSURE_MAX_NIGHT 4.0
 
 #define TARGET_EXPOSURE_EV 0.18
-#define EXPOSURE_PERCENTILE 0.75
+#define EXPOSURE_PERCENTILE 0.65
 
 // Minimum scene luminance that auto-exposure will adapt down to.
 // Keeps naturally dark areas (caves, unlit nights) dark instead of boosting black into mid-gray.
-#define MIN_ADAPTATION_LUMINANCE 0.1
+#define MIN_ADAPTATION_LUMINANCE 0.045
 
 // Center-weighted metering bias: increases the importance of tiles near the screen center (player gaze).
-#define CENTER_METERING_STRENGTH 3.0
+#define CENTER_METERING_STRENGTH 2.0
 
 // Minimum tile average luminance to be counted in the histogram. Pitch black tiles are clipped out.
 #define BLACK_CLIP_LUMINANCE 0.0005
