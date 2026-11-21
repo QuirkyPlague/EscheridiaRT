@@ -102,7 +102,7 @@
 
         float D = D_GGX(NdotH, surface.roughness * surface.roughness);
         float G = G_Smith(NdotV, NdotL, surface.roughness); 
-         float3 fogExtinction = GetAtmosphereSunTransmittance(surface.position, ray.Direction, rng, hitWater);
+         float3 fogExtinction = GetAtmosphereSunTransmittance(surface.position, ray.Direction, hitWater);
 
         float3 specularBRDF = (fresnelSchlick(VdotH, F0) * D * G) / (4.0 * NdotV * NdotL);
         float shadingNormalCorrection = ShadingNormalCorrectionRadiance(L, V, Ng, N);
@@ -138,7 +138,7 @@
         light.shadowTransmittance = payload.transmission;
 
         float pdfSun = max(PDF_SunCone(), 1e-4);
-        float3 fogExtinction = GetAtmosphereSunTransmittance(position, ray.Direction, rng, hitWater);
+        float3 fogExtinction = GetAtmosphereSunTransmittance(position, ray.Direction, hitWater);
         light.direction = ray.Direction;
         light.color *= light.intensity;
         light.radiance =light.color * light.shadowTransmittance * fogExtinction / pdfSun;

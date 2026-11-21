@@ -13,13 +13,13 @@
 
 #define DO_SAMPLE_LIMITS 0
 #define MAX_ACCUMULATED_SAMPLES 256
-#define MAX_BOUNCES 20
+#define MAX_BOUNCES 8
 
 // White furnace test
 #define WHITE_FURNACE 0
 
 // If enabled, water will have its alpha channel enabled allowing diffuse contribution, otherwise alpha will be 0.
-#define ENABLE_WATER_DIFFUSE 0
+#define ENABLE_WATER_DIFFUSE 1
 
 // This will enable an HDR color space to use with your HDR monitor
 // This WILL require an external plugin like Reshade or Special K
@@ -229,8 +229,8 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define WAVE_PULL                                           (0.34235)
 
 #define WAVE_STEEPNESS 0.04
-#define WAVE_HEIGHT  0.045
-#define WAVE_BASE_WAVELENGTH 5.8f
+#define WAVE_HEIGHT  0.065
+#define WAVE_BASE_WAVELENGTH 6.8f
 #define WAVE_COUNT 9
 
 // Gerstner Micro Wave Details (Inter-octave ripples and high-frequency capillary texture)
@@ -280,5 +280,16 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 
 // size of water droplets in micron diameters for mie phase 
 #define WATER_DROPLET_SIZE  34
+
+// DLSS Ray Reconstruction through the RTXBoost mod (see RR-SUPPORT.md).
+// Only active while RTXBoost has RR turned on, otherwise the pack renders as usual.
+// 0 removes the RR code from the build entirely.
+#define ENABLE_RAY_RECONSTRUCTION 1
+
+// Use background surface depth and motion for primary fog-scattered rays in RR mode.
+#define RR_FOG_BACKGROUND_MOTION 1
+
+// Reduce primary air-fog direct-light noise in RR mode at the cost of an extra shadow ray.
+#define RR_FOG_DIRECT_SAMPLING 1
 
 #endif // SETTINGS_HLSL

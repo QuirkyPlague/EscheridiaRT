@@ -27,6 +27,7 @@
 #include "Include/Util.hlsl"
 #include "Include/tonemapping.hlsl"
 #include "Include/settings.hlsl"
+#include "Include/RayReconstruction.hlsl"
 
 [numthreads(16, 16, 1)]
 void CopyToFinal(
@@ -40,11 +41,13 @@ uint3 groupID : SV_GroupID
     // Note that g_rootConstant0 from FinalCombine pass is accessible here
 
     if (any(dispatchThreadID.xy >= g_view.displayResolution)) return;
+    rrCarryAck(dispatchThreadID.xy); // DLSS Ray Reconstruction: before this pixel is overwritten (RayReconstruction.hlsl)
 
     float4 color;
     if (isUpscalingEnabled()) {
         // Pick up upscaled results from inputThisFrameTAAHistory
         color = inputThisFrameTAAHistory[dispatchThreadID.xy];
+        color.rgb = rrRemovePreExposure(color.rgb); // DLSS Ray Reconstruction (RayReconstruction.hlsl)
         static const float3x3 matrix_rec709_to_xyz = transpose(float3x3(0.412390917540, 0.357584357262, 0.180480793118, 0.212639078498, 0.715168714523, 0.072192311287, 0.019330825657, 0.119194783270, 0.950532138348));
         static const float3x3 matrix_xyz_to_p3d65 = transpose(float3x3(2.49349691194, -0.931383617919, -0.402710784451, -0.829488969562, 1.76266406032, 0.023624685842, 0.035845830244, -0.076172389268, 0.956884524008));
         static const float3x3 matrix_xyz_to_rec2020 = transpose(float3x3(1.71665118797, -0.355670783776, -0.253366281374, -0.666684351832, 1.61648123664, 0.015768545814, 0.017639857445, -0.042770613258, 0.942103121235));

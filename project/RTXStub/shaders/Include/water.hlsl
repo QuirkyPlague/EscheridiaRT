@@ -216,7 +216,7 @@ float EvaluateWaterParallax(
         return 0.0f;
     }
 
-    float safeDy = (abs(rayDir.y) < 0.12f) ? (sign(rayDir.y) * 0.12f) : rayDir.y;
+    float safeDy = (abs(rayDir.y) < 0.12f) ? (rayDir.y < 0.0f ? -0.12f : 0.12f) : rayDir.y;
     float maxT = clamp(2.5f * WAVE_HEIGHT / abs(safeDy), 0.2f, WATER_PARALLAX_MAX_DIST);
 
     float parralaxHeight = 0.0f;

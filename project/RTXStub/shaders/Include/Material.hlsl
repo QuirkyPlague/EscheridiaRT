@@ -625,7 +625,6 @@
         return surfaceInfo;
     }
 
-
     bool AlphaTestHitLogic1(HitInfo hitInfo)
     {
         #if CULL_GLASS_BACK_FACES
@@ -656,8 +655,9 @@
         float3 F0;
         float3 IOR;
         
-        void SetUp(inout SurfaceInfo surface, in GeometryInfo geom, in float3 direction, in int bounceCount, inout float hitDist, inout float parallaxHeight, in RayDesc ray)
+        void SetUp(inout SurfaceInfo surface, in GeometryInfo geom, in float3 direction, in int bounceCount, out float parallaxHeight)
         {
+            parallaxHeight = 0.0f;
             IOR = float3(1.333, 1.333, 1.333); // Default IOR for water
             color = 1.0;
             roughness = 0.00;
@@ -681,23 +681,51 @@
             float3 flatNormal = geom.geometryNormal;
             
             GerstnerSample wave;
-            /*
+            
             #if ENABLE_WATER_PARALLAX
+                float3 flatPos = surface.position;
                 float3 displacedPos = surface.position;
                 parallaxHeight = EvaluateWaterParallax(
                 surface.position,
                 direction,
                 flatNormal,
                 g_view.waveWorksOriginInSteveSpace.xz,
-                g_view.time * 0.0,
+                g_view.time * 0.85,
                 waveFade,
                 displacedPos,
                 wave
                 );
                 surface.position = displacedPos;
+
+                if (bounceCount == 0 && abs(flatNormal.y) >= 0.5f && waveFade > 0.01f)
+                {
+                    float4 previousFrame = getPreviousWaterFrame();
+                    float2 currentXZ = flatPos.xz - g_view.waveWorksOriginInSteveSpace.xz;
+                    currentXZ -= floor(currentXZ / 1024.0f) * 1024.0f;
+                    currentXZ += displacedPos.xz - flatPos.xz;
+                    GerstnerSample currentWave = SampleGerstner(currentXZ, g_view.time * 0.85f);
+                    float2 previousXZ = surface.prevPosition.xz - previousFrame.yz;
+                    previousXZ -= floor(previousXZ / 1024.0f) * 1024.0f;
+                    previousXZ += displacedPos.xz - flatPos.xz;
+                    GerstnerSample previousWave = SampleGerstner(previousXZ, previousFrame.x * 0.85f);
+                    float2 previousPosXZ = surface.prevPosition.xz + (displacedPos.xz - flatPos.xz);
+                    float previousFade = 1.0f - smoothstep(WAVE_FADE_START, WAVE_FADE_END,
+                        length(surface.prevPosition.xz - g_view.previousViewOriginSteveSpace.xz));
+
+                    // Track a Gerstner material point; multiple wave directions cannot
+                    // be represented exactly by a single motion vector.
+                    float2 horizontalMotion = currentWave.horizontalOffset * waveFade -
+                        previousWave.horizontalOffset * previousFade;
+                    previousXZ -= horizontalMotion;
+                    previousWave = SampleGerstner(previousXZ, previousFrame.x * 0.85f);
+                    previousPosXZ -= horizontalMotion;
+                    surface.prevPosition.xz = previousPosXZ;
+                    surface.prevPosition.y += (displacedPos.y - flatPos.y) +
+                        previousWave.height * previousFade - currentWave.height * waveFade;
+                }
               
             #else
-                float3 worldPos = surfaceInfo.position - g_view.waveWorksOriginInSteveSpace;
+                float3 worldPos = surface.position - g_view.waveWorksOriginInSteveSpace;
                 worldPos = worldPos - floor(worldPos / 1024.0) * 1024.0;
                 wave = SampleGerstner(worldPos.xz, 0.0f);
             #endif
@@ -716,7 +744,7 @@
             float fade = 1.15 - exp(-distanceFromPlayer / 32);
 
             roughness = lerp(0.235, roughness, waveFade);
-            */
+            
 
            
             

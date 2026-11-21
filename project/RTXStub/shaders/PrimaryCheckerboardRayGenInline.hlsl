@@ -28,6 +28,7 @@
 #include "Include/Renderer.hlsl"
 #include "Include/Util.hlsl"
 #include "Include/DOF.hlsl"
+#include "Include/RayReconstruction.hlsl"
 
 [numthreads(4, 8, 1)]
 void PrimaryCheckerboardRayGenInline(
@@ -61,6 +62,7 @@ void PrimaryCheckerboardRayGenInline(
         
              
      float3 directColor; float3 primaryThroughput;
+     rrBeginPixel(dispatchThreadID.xy); // DLSS Ray Reconstruction guides (RayReconstruction.hlsl)
      color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy, firstHitDist);
 
      float4 blueNoise = GetBlueNoiseValue(dispatchThreadID.xy);
@@ -81,10 +83,12 @@ motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist
 
     // Basic debug views for NaNs and Infinity
     #if 1
-    if (any(isinf(color)) || any(isinf(motionVector)) || isinf(hitDist))
+    if (any(isinf(color)) || any(isinf(motionVector)) || isinf(hitDist)) {
         color = (dispatchThreadID.x / 32 + dispatchThreadID.y / 32) & 1 ? float3(1, 1, 0) : 0;
-    if (any(isnan(color)) || any(isnan(motionVector)) || isnan(hitDist))
+    }
+    if (any(isnan(color)) || any(isnan(motionVector)) || isnan(hitDist)) {
         color = (dispatchThreadID.x / 32 + dispatchThreadID.y / 32) & 1 ? float3(1, 0, 1) : 0;
+    }
     #endif
 
    

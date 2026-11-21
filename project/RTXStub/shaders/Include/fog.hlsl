@@ -222,7 +222,7 @@
         float hi = tEnd;
 
         // Invert integrated optical depth.
-        for (int i = 0; i < 10; ++i)
+        for (int i = 0; i < 16; ++i)
         {
             float mid = 0.5 * (lo + hi);
 
@@ -630,15 +630,13 @@ float3 SampleApproximateMie(
         return float3(r * cos(phi), r * sin(phi), z);
     }
 
-    float3 GetAtmosphereSunTransmittance(float3 origin, float3 dir, inout PathRNG rng, in bool hitWater)
+    float3 GetAtmosphereSunTransmittance(float3 origin, float3 dir, in bool hitWater)
     {
         const float ATMOSPHERE_RADIUS = 550.0f;
 
         float t0, t1;
         if (!RaySphereIntersect(origin, dir, ATMOSPHERE_RADIUS, t0, t1) || t1 <= 0.0f)
         return 1.0;
-
-        float t = max(t0, 0.0f);
 
         float3 sigmaT3 =
         inEnd
@@ -655,30 +653,8 @@ float3 SampleApproximateMie(
             sigmaT3 = getMediaExtinction(MEDIA_TYPE_WATER).rgb * 0.03;
         }
 
-        float majorant = max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z));
-        majorant = max(majorant, 1e-6f);
-
-        float3 transmittance = 1.0;
-
-         for(int i = 0; i < 100; i++)
-        {
-            float xi = max(NextFloat(rng), 1e-6f);
-            t += -log(xi) / majorant;
-
-            if (t >= t1)
-            break;
-
-            float3 candidatePos = origin + dir * t;
-            float densityModifier = saturate(calcDensityModifier(candidatePos));
-            float3 localSigmaT3 = sigmaT3 * densityModifier;
-
-            transmittance *= 1.0 - saturate(localSigmaT3 / majorant);
-
-            if (max(transmittance.x, max(transmittance.y, transmittance.z)) < 1e-3f)
-            break;
-        }
-
-        return transmittance;
+        float integratedDensity = IntegrateHeightDensity(origin, dir, max(t0, 0.0f), t1);
+        return exp(-max(sigmaT3, 0.0f) * integratedDensity);
     }
     
     

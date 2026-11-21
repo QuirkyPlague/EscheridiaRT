@@ -34,6 +34,7 @@
     #include "water.hlsl"
     #include "fog.hlsl"
     #include "DirectLighting.hlsl"
+    #include "RayReconstruction.hlsl"
     
     static const uint kBlueNoiseLayerMask = kBlueNoiseLayerCount - 1;
 
@@ -72,6 +73,7 @@
         float3 throughput;
         float distance;
         float3 motion;
+        float primaryParallaxOffset;
         uint instanceMask; // 8 bits, see INSTANCE_MASK macros in Constants.hlsl
         bool hitWater;
         bool inSSSMedium;
@@ -90,6 +92,7 @@
             throughput = 1;
             distance = 0;
             motion = 0;
+            primaryParallaxOffset = 0;
             instanceMask = 0xff & ~INSTANCE_MASK_SUN_OR_MOON;
             hitWater = false;
             inSSSMedium = false;
@@ -289,10 +292,9 @@
             if (hitInfo.materialType == MATERIAL_TYPE_WATER) 
             {
                 WaterMaterial waterMat;
-                waterMat.SetUp(surfaceInfo, geometryInfo, direction, bounceCount, firstHitDist, parallaxHeight, ray);
+                waterMat.SetUp(surfaceInfo, geometryInfo, direction, bounceCount, parallaxHeight);
                 waterIOR = waterMat.IOR.x;
-                // ensure the value cannot go negative so the ray always starts at the surface
-                parallaxHeight = max(1e-4, parallaxHeight);
+                if (bounceCount == 0) rayState.primaryParallaxOffset = parallaxHeight;
             }
             bool isCloud = objectInstance.flags & kObjectInstanceFlagClouds;
             if (hitInfo.materialType == MATERIAL_TYPE_OPAQUE || hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST) surfaceInfo.alpha = 1;
@@ -319,6 +321,8 @@
 
             bool isWater = hitInfo.materialType == MATERIAL_TYPE_WATER; 
             float3 F0 = surfaceInfo.F0; 
+            // DLSS Ray Reconstruction guides of the primary surface (RayReconstruction.hlsl)
+            if (bounceCount == 0) rrWritePrimarySurfaceGuide(N, V, surfaceInfo.roughness, surfaceInfo.color, surfaceInfo.metalness, F0);
             
             /*
             #if DO_RAIN_WETNESS
@@ -551,6 +555,7 @@
 
 
             
+            float3 surfaceMotion = surfaceInfo.position - surfaceInfo.prevPosition;
             #if ENABLE_WATER_PARALLAX
                 if (hitInfo.materialType == MATERIAL_TYPE_WATER)
                 {
@@ -573,8 +578,21 @@
 
             // Update other ray properties
             rayState.distance += hitInfo.rayT;
-            rayState.motion += surfaceInfo.position - surfaceInfo.prevPosition;
+            rayState.motion += surfaceMotion;
         #endif
+    }
+
+    float3 SampleFogDirectRadiance(float3 position, float3 direction, float3 lightDirection,
+        float dropletSize, float3 sigmaT, bool hitWater, PathRNG rng)
+    {
+        float sunRadius = inEnd ? END_SUN_RADIUS : SUN_RADIUS;
+        float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0));
+        float sunEv = 0.3 * exp2(sunColor.a * SUN_INTENSITY);
+        DirectLight light = sampleVolumetricDirectLightData(lightDirection, sunColor.rgb, sunEv,
+            sunRadius, true, position, direction, rng, hitWater, false, sigmaT);
+        float gHG, gD, alpha, draineWeight;
+        GetApproximateMieParameters(dropletSize, gHG, gD, alpha, draineWeight);
+        return light.radiance * PhaseApproximateMie(dot(direction, light.direction), gHG, gD, alpha, draineWeight);
     }
 
     float3 RenderRay(RayDesc rayDesc, out float outputDistance, out float3 outputMotion, in float2 pixelPos, inout float firstHitDist)
@@ -811,8 +829,38 @@
             float densityModifier = 0.0f;
             bool mediumScattered = false;
             float3 waterSegmentWeight = 1.0;
+            bool samplePrimaryFogDirect = false;
 
             #if !WHITE_FURNACE
+                #if ENABLE_RAY_RECONSTRUCTION && RR_FOG_DIRECT_SAMPLING
+                samplePrimaryFogDirect = g_rrActive && i == 0 && !rayState.hitWater && volumeStart < tEnd;
+                if (samplePrimaryFogDirect)
+                {
+                    float3 volumeOrigin = rayState.rayDesc.Origin + rayState.rayDesc.Direction * volumeStart;
+                    float segmentLength = tEnd - volumeStart;
+                    float extinction = max(0.0f, max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z)));
+                    float opticalDepth = extinction * IntegrateHeightDensity(
+                        volumeOrigin, rayState.rayDesc.Direction, 0.0f, segmentLength);
+                    float scatterProbability = saturate(1.0f - exp(-opticalDepth));
+                    if (scatterProbability > 0.0f)
+                    {
+                        PathRNG directRng;
+                        directRng.state = PCG_Hash(uint3(baseSeed ^ 0xD1B54A35u, g_view.frameCount, 0x94D049BBu));
+                        float distance = SampleHeightFogDistance(volumeOrigin, rayState.rayDesc.Direction,
+                            segmentLength, extinction, NextFloat(directRng) * scatterProbability);
+                        if (distance <= segmentLength)
+                        {
+                            float3 position = volumeOrigin + rayState.rayDesc.Direction * distance;
+                            float density = calcDensityModifier(position);
+                            float3 sigmaT = sigmaT3 * density;
+                            float3 scatterWeight = sigmaS3 * density / max(sigmaT, 1e-6f);
+                            rayState.color += rayState.throughput * scatterProbability * scatterWeight *
+                                SampleFogDirectRadiance(position, rayState.rayDesc.Direction, mainLightDir,
+                                    waterDropletSize, sigmaT, false, directRng);
+                        }
+                    }
+                }
+                #endif
                 if (rayState.hitWater && volumeStart < tEnd)
                 {
                     uint channel = min((uint)(NextFloat(rng) * 3.0f), 2u);
@@ -844,7 +892,7 @@
 
                     float t = volumeStart;
                     // limit to 100 delta tracking steps. less accuracy but more performant than unlimited esp if we are going forward with 20+ bounces
-                    for(int i = 0; i < 100; i++)
+                    for(int step = 0; step < 100; step++)
                     {
                         float xi = max(NextFloat(rng), 1e-6f);
                         t += -log(xi) / majorant;
@@ -878,6 +926,14 @@
 
             if (mediumScattered)
             {
+                #if ENABLE_RAY_RECONSTRUCTION && RR_FOG_BACKGROUND_MOTION
+                if (g_rrActive && i == 0 && hitSurface)
+                {
+                    HitInfo backgroundHit = GetCommittedHitInfo(q);
+                    rrDescribeFoggedPrimarySurface(backgroundHit, rayDesc.Direction, primaryDistance, primaryMotion);
+                }
+                #endif
+
                 float3 scatterPos =
                 rayState.rayDesc.Origin +
                 rayState.rayDesc.Direction * medium;
@@ -890,24 +946,14 @@
 
                 float3 scatterWeight = rayState.hitWater ? 1.0.xxx : sigmaS / max(sigmaT, 1e-6);
 
-                float sunRadius = inEnd ? END_SUN_RADIUS : SUN_RADIUS;
-                
-                float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0));
-                float sunEv = 0.3 * exp2(sunColor.a * SUN_INTENSITY);
-                DirectLight light = sampleVolumetricDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, scatterPos, rayState.rayDesc.Direction, rng, rayState.hitWater, false, sigmaT);
-
-                float VdotL = dot(rayState.rayDesc.Direction, light.direction);
                 float gHG, gD, alpha, draineWeight;
                 GetApproximateMieParameters(waterDropletSize, gHG, gD, alpha, draineWeight);
-                
-
-                float cosThetaSun = VdotL;
-
-                float sunPhase = PhaseApproximateMie(cosThetaSun, gHG, gD, alpha, draineWeight);
-
-                float3 directScatter = rayState.throughput * scatterWeight * (light.radiance * sunPhase);
-                
-                rayState.color += directScatter;
+                if (!samplePrimaryFogDirect)
+                {
+                    rayState.color += rayState.throughput * scatterWeight *
+                        SampleFogDirectRadiance(scatterPos, rayState.rayDesc.Direction, mainLightDir,
+                            waterDropletSize, sigmaT, rayState.hitWater, rng);
+                }
                 float phasePdf;
                 float cosTheta;
                 float3 nextDirection = SampleApproximateMie(rayState.rayDesc.Direction,gHG,gD,alpha,draineWeight,rng,phasePdf, cosTheta);
@@ -940,7 +986,7 @@
                     i, rayDesc);
                     if (i == 0)
                     {
-                        primaryDistance = min(hitInfo.rayT, maxDistance);
+                        primaryDistance = clamp(hitInfo.rayT + rayState.primaryParallaxOffset, 0.0f, maxDistance);
                         primaryMotion = rayState.motion;
                     }
                 }

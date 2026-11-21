@@ -182,6 +182,16 @@ float2 computeMotionVector(float3 steveSpacePositon, float3 steveSpaceMotion) {
     return (prevNdcPos - ndcPos) * float2(0.5, -0.5); // Offset in UV space.
 }
 
+static const uint kWaterHistorySlot = 277;
+
+float4 getPreviousWaterFrame() {
+    float4 history = inputIncidentLight[kWaterHistorySlot];
+    if (history.w != float((g_view.frameCount - 1u) & 65535u) ||
+        !all(isfinite(history.xyz)) || history.x > g_view.time)
+        return float4(g_view.time, g_view.waveWorksOriginInSteveSpace.xz, 0.0f);
+    return history;
+}
+
 float3 rayDirFromNDC(float2 ndc) {
     // Note: as far as I can tell, view origin is always 0, hence it's not necessary to subtract it or even 
     // divide resulting vector by W. But I'm keeping the code here in case view origin becomes something else in the future.

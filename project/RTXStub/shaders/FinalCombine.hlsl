@@ -1,6 +1,7 @@
 #include "Include/Generated/Signature.hlsl"
 #include "Include/Util.hlsl"
 #include "Include/settings.hlsl"
+#include "Include/RayReconstruction.hlsl"
 
 
 [numthreads(16, 16, 1)]
@@ -19,6 +20,16 @@ void FinalCombine(
     uint shadowDenoisingBufferIndex = (g_rootConstant0 >> 16) & 0xff;
 
     uint2 pixelPos = dispatchThreadID.xy;
+
+    // DLSS Ray Reconstruction (RayReconstruction.hlsl): handshake texels in the guard band.
+    bool rrActive = rrIsActive();
+    if (all(pixelPos == 0)) {
+        rrBeginFrame(rrActive);
+        bufferIncidentLight[kWaterHistorySlot] = float4(
+            g_view.time, g_view.waveWorksOriginInSteveSpace.xz,
+            float(g_view.frameCount & 65535u));
+    }
+    if (rrIsReservedTexel(pixelPos, rrActive)) return;
 
 
     // The combined path-traced image is filtered into the selected denoising
@@ -52,5 +63,6 @@ void FinalCombine(
 	
 
     outputBufferReferencePathTracer[pixelPos] = float4(historyColor, finalAlpha);
-    outputBufferFinal[pixelPos] = float4(historyColor, finalAlpha);
+    // if rr is active do not use the offline path tracing output. just use the current sample
+    outputBufferFinal[pixelPos] = float4(rrActive ? rrPreExpose(currentSample) : historyColor, finalAlpha);
 }
