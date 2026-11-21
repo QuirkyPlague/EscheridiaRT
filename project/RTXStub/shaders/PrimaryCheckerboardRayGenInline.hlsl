@@ -97,4 +97,6 @@ motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist
     outputBufferIndirectDiffuse[dispatchThreadID.xy] = float4(color, 1);
     outputBufferMotionVectors[dispatchThreadID.xy] = motionVector;
     outputBufferReprojectedPathLength[dispatchThreadID.xy] = hitDist;
+
+    rrEndPixel(rayDesc.Origin, rayDesc.Direction, hitDist); // DLSS Ray Reconstruction guides (RayReconstruction.hlsl)
 }

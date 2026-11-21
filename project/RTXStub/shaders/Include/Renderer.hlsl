@@ -85,6 +85,7 @@
         float3 sssSigmaS;
         float3 sssSigmaT;
         bool scattered;
+        float lobeRoughness; // roughness of the lobe that picked the current direction (0 = camera ray or mirror)
 
         void Init()
         {
@@ -104,6 +105,7 @@
             sssSigmaS = 0;
             sssSigmaT = 0;
             scattered = false;
+            lobeRoughness = 0;
         }
     };
 
@@ -134,13 +136,23 @@
         sunStrength = max(sunStrength, minSunIntensity); // This allows for the sun to have an effect on the sky even after sunset
         float3 worldPos = float3(0,500,0);
         float3 rayOriginKm = worldPos * 0.001;
-        
+
+        // Stars and the moon disc are tiny and very bright. A glossy or diffuse bounce finds them only by
+        // chance, so they turn into glitter that hardly adds any light; such bounces see the star field's
+        // mean instead, and the moon only through its direct light sample (as the sun). Mirror-like
+        // bounces (still water, glass) keep both.
+        #if PREFILTER_SKY_ON_ROUGH_BOUNCES
+        float skyDetail = isPrimaryRay ? 1.0 : 1.0 - smoothstep(0.05, 0.15, rayState.lobeRoughness);
+        #else
+        float skyDetail = 1.0;
+        #endif
+
         float3 finalColor = RenderHillaireAnalytical(
         rayOriginKm,
         rayState.rayDesc.Direction,
         mainLightDir,
         sunStrength,
-        rng,true,isPrimaryRay);
+        rng,skyDetail,isPrimaryRay);
         
         
         
@@ -302,6 +314,7 @@
             float NdotL = max(dot(surfaceInfo.normal, mainLightDir),0.0001);
 
             float3 nextDirection;
+            float lobeRoughness = 1.0f; // diffuse unless a reflection or refraction lobe is picked below
             float3 N = surfaceInfo.normal;
             float3 V = -direction;
             float3 ng = geometryInfo.geometryNormal;
@@ -395,6 +408,10 @@
                 float eta = isWater
                     ? (inWater ? waterIOR : 1.0f / waterIOR)
                     : (hitInfo.frontFacing ? (1.0f / 1.5f) : 1.5f);
+                #if RR_TRANSPARENT_GUIDES
+                // DLSS Ray Reconstruction: guides for what the pixel shows through the surface (RayReconstruction.hlsl)
+                if (bounceCount == 0) rrWriteTransparentPrimaryGuide(surfaceInfo.position, ng, N, V, surfaceInfo.roughness, surfaceInfo.color, surfaceInfo.alpha, eta, isWater);
+                #endif
                 float alpha = max(roughness, 0.0001f);
                 float3 microfacetNormalTS = SampleVNDFGGX(tangentView, alpha, XiSpec);
                 float3 microfacetNormal = normalize(microfacetNormalTS.x * T + microfacetNormalTS.y * B + microfacetNormalTS.z * N);
@@ -407,6 +424,7 @@
                 if (Xi.x < F_diel)
                 {
                     nextDirection = reflect(direction, microfacetNormal);
+                    lobeRoughness = surfaceInfo.roughness;
                     if (dot(N, nextDirection) <= 0.0f || dot(ng, nextDirection) <= 0.0f)
                     {
                         rayColor = 0.0;
@@ -419,6 +437,7 @@
                 else if (Xi.x < F_diel + transmissionProbability)
                 {
                     nextDirection = refract(direction, microfacetNormal, eta);
+                    lobeRoughness = surfaceInfo.roughness;
                     if (dot(nextDirection, nextDirection) < 1e-6f ||
                         dot(N, nextDirection) >= 0.0f || dot(ng, nextDirection) >= 0.0f)
                     {
@@ -456,6 +475,7 @@
                 nextDirection = normalize(tangentReflDir.x * T +tangentReflDir.y * B +tangentReflDir.z * N);
                 float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N); 
                 rayColor *= specularBRDFGGX(N, nextDirection, V, F0,H, surfaceInfo.roughness, specularProbability);
+                lobeRoughness = surfaceInfo.roughness;
             }
             else if (Xi.x < specularProbability + sssProbability)
             {
@@ -573,6 +593,7 @@
             rayState.color += totalRadiance * rayState.throughput;
             rayState.throughput *= rayColor  * transmission;
             rayState.rayDesc.Direction = nextDirection; 
+            rayState.lobeRoughness = lobeRoughness;
             if (dot(nextDirection, ng) < 0.0 && isTransparentSurface) ng = -ng;
             rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, ng);
 
@@ -645,6 +666,7 @@
                 HitInfo hitInfo = GetCommittedHitInfo(q);
                 surface = hitInfo.rayT;
             }
+            rrNoteBounceDistance(i, hitSurface, surface); // DLSS Ray Reconstruction: specular hit distance (RayReconstruction.hlsl)
 
             if (rayState.inSSSMedium)
             {
@@ -692,6 +714,7 @@
                     rayState.throughput *= transmittance * rayState.sssSigmaS / distancePdf;
                     float3 scatterPos = rayState.rayDesc.Origin + rayState.rayDesc.Direction * (start + distance);
                     rayState.rayDesc.Direction = SampleUniformSphere(NextFloat2(rng));
+                    rayState.lobeRoughness = 1.0;
                     rayState.rayDesc.Origin = offset_ray(scatterPos, rayState.rayDesc.Direction);
                     rayState.rayDesc.TMin = 0.0;
                     rayState.scattered = true;
@@ -762,6 +785,7 @@
                     rayState.sssSigmaT = 0.0;
                     rayState.sssSigmaS = 0.0;
                     rayState.rayDesc.Direction = CosineHemisphereSampling(NextFloat2(rng), exitNormal);
+                    rayState.lobeRoughness = 1.0;
                     rayState.rayDesc.Origin = offset_ray(exitPos, exitNormal);
                     rayState.rayDesc.TMin = 0.0;
                 }
@@ -963,6 +987,7 @@
                 ((sampledPhase) / max(phasePdf, 1e-6));
 
                 rayState.rayDesc.Direction = nextDirection;
+                rayState.lobeRoughness = 1.0;
                 rayState.rayDesc.Origin =
                 offset_ray(scatterPos, rayState.rayDesc.Direction);
                 

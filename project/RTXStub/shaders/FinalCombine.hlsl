@@ -22,14 +22,15 @@ void FinalCombine(
     uint2 pixelPos = dispatchThreadID.xy;
 
     // DLSS Ray Reconstruction (RayReconstruction.hlsl): handshake texels in the guard band.
-    bool rrActive = rrIsActive();
+    uint mode = rrMode();
+    bool rrActive = mode != 0u;
     if (all(pixelPos == 0)) {
-        rrBeginFrame(rrActive);
+        rrBeginFrame(mode);
         bufferIncidentLight[kWaterHistorySlot] = float4(
             g_view.time, g_view.waveWorksOriginInSteveSpace.xz,
             float(g_view.frameCount & 65535u));
     }
-    if (rrIsReservedTexel(pixelPos, rrActive)) return;
+    if (rrIsReservedTexel(pixelPos, mode)) return;
 
 
     // The combined path-traced image is filtered into the selected denoising
@@ -64,5 +65,6 @@ void FinalCombine(
 
     outputBufferReferencePathTracer[pixelPos] = float4(historyColor, finalAlpha);
     // if rr is active do not use the offline path tracing output. just use the current sample
-    outputBufferFinal[pixelPos] = float4(rrActive ? rrPreExpose(currentSample) : historyColor, finalAlpha);
+    // At DLAA the RR marker is an image pixel: its alpha carries the code (RayReconstruction.hlsl).
+    outputBufferFinal[pixelPos] = float4(rrActive ? rrPreExpose(currentSample) : historyColor, rrMarkerAlpha(pixelPos, mode, finalAlpha));
 }

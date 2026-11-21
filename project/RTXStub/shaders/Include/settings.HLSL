@@ -281,10 +281,19 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 // size of water droplets in micron diameters for mie phase 
 #define WATER_DROPLET_SIZE  34
 
+// Glossy and diffuse bounces see the mean of the star field and no moon disc (the moon still lights
+// them through its direct light sample). Removes the glitter of metals and rough surfaces at night;
+// mirror-like surfaces keep every star. 0 = stars and moon on every bounce, as before.
+#define PREFILTER_SKY_ON_ROUGH_BOUNCES 1
+
 // DLSS Ray Reconstruction through the RTXBoost mod (see RR-SUPPORT.md).
 // Only active while RTXBoost has RR turned on, otherwise the pack renders as usual.
 // 0 removes the RR code from the build entirely.
 #define ENABLE_RAY_RECONSTRUCTION 1
+
+// Water and glass: RR's albedo guide describes what is seen through the surface (one extra
+// ray per water / glass pixel in RR mode). 0 = the surface's own colour, as before.
+#define RR_TRANSPARENT_GUIDES 1
 
 // Use background surface depth and motion for primary fog-scattered rays in RR mode.
 #define RR_FOG_BACKGROUND_MOTION 1

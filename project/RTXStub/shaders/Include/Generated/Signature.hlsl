@@ -79,7 +79,9 @@ RWTexture2D<float4> outputBufferEmissiveAndLinearRoughness : register(u4); // R1
 RWTexture2D<float4> outputBufferIndirectDiffuse : register(u5); // R16G16B16A16_FLOAT RENDER
 RWTexture2D<float4> outputBufferIndirectSpecular : register(u6); // R16G16B16A16_FLOAT RENDER
 RWTexture2D<float2> outputBufferSurfaceOpacityAndObjectCategory : register(u7); // R8G8_UNORM RENDER
-// Uninitialized // {{RTXStub.buffers.u8_space0}}
+// u8 is not bound by the engine. RTXBoost (1.5+) binds a texture of its own there for RR handshake
+// version 3; touch it ONLY in RR mode 3 (RayReconstruction.hlsl), the descriptor is not initialised otherwise.
+RWTexture2D<float4> rrGuideAtlas : register(u8); // R16G16B16A16_FLOAT 2*RENDER.x by 2*RENDER.y + 8
 // Uninitialized // {{RTXStub.buffers.u9_space0}}
 RWTexture2D<float2> outputBufferMotionVectors : register(u10); // R16G16_FLOAT RENDER
 RWTexture2D<float4> outputBufferIncomingIrradianceCache : register(u11); // R16G16B16A16_FLOAT RENDER

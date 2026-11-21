@@ -234,7 +234,8 @@
         return color;
     }
 
-    float3 getSun(float3 dir, bool drawSunDisc) {
+    // moonDetail: 1 = the moon disc, 0 = none (the bounce sees the moon only through its direct light sample).
+    float3 getSun(float3 dir, bool drawSunDisc, float moonDetail) {
         float3 sunDir = inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
         float3 moonDir = getTrueDirectionToMoon();
         float cosThetaSun = dot(dir, sunDir);
@@ -318,7 +319,7 @@
         float3 moonColor =  float3(0.12, 0.321,0.65);
         float3 fullmoon = inEnd ? 0.0 : moon * moonColor * sunHeightFactor;
 
-        float3 celestial = (drawSunDisc ? fullSun : 0.0.xxx) + fullmoon;
+        float3 celestial = (drawSunDisc ? fullSun : 0.0.xxx) + fullmoon * moonDetail;
 
         return celestial;
     }
@@ -551,10 +552,22 @@
         return starColor * star * brightness * nightFactor;
     }
 
+    // ProceduralStars averaged over many cells, i.e. what a rough bounce should see instead of single stars.
+    // Mean = chance of a star in a cell (0.075) * mean brightness (0.15..1.6 -> 0.875)
+    //      * mean colour (the three colour stops weighted 1:2:1)
+    //      * mean area the star profile covers inside its cell (size 0.0072..0.055, numerically 0.00158).
+    // Update these numbers together with ProceduralStars.
+    float3 MeanStarRadiance(float3 rayDir, float nightFactor)
+    {
+        if (rayDir.y <= 0.0f || nightFactor <= 0.0f) return 0.0f;
+        const float3 meanStarColor = (float3(1.0f, 0.78f, 0.58f) + 2.0f * float3(1.0f, 0.95f, 0.82f) + float3(0.68f, 0.78f, 1.0f)) * 0.25f;
+        return 0.075f * 0.875f * 0.00158f * meanStarColor * nightFactor;
+    }
 
 
 
-    float3 RenderHillaireAnalytical(float3 cameraPosKm, float3 rayDir, float3 sunDir, float  sunIntensity,PathRNG rng, bool drawStars, bool drawSunDisc)
+
+    float3 RenderHillaireAnalytical(float3 cameraPosKm, float3 rayDir, float3 sunDir, float  sunIntensity,PathRNG rng, float skyDetail, bool drawSunDisc)
     {
         
         float3 rayOrig = cameraPosKm + float3(0.0f, EARTH_RADIUS + 0.001f, 0.0f);
@@ -641,17 +654,17 @@
             
 
             //totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.25)  : totalLuminance;
-            if(drawStars)
+            // skyDetail: 1 = every star, 0 = the star field's mean (rough bounces, see RenderSky).
             {
-                
                 float nightFactor = smoothstep(0.12f, -0.08f, sunDir.y);
-                totalLuminance += ProceduralStars(rayDir, nightFactor);
+                float3 stars = skyDetail > 0.0f ? ProceduralStars(rayDir, nightFactor) : 0.0f;
+                totalLuminance += lerp(MeanStarRadiance(rayDir, nightFactor), stars, skyDetail);
             }
 
 
             // Fade the sun itself by the atmosphere transmittance so it naturally blends out
             // as the sun sinks toward the horizon instead of remaining a flat bright disc.
-            float3 sun = getSun(rayDir, drawSunDisc);
+            float3 sun = getSun(rayDir, drawSunDisc, skyDetail);
             
             
             return totalLuminance + sun;
