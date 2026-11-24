@@ -13,13 +13,13 @@
 
 #define DO_SAMPLE_LIMITS 0
 #define MAX_ACCUMULATED_SAMPLES 256
-#define MAX_BOUNCES 20
+#define MAX_BOUNCES 8
 
 // White furnace test
 #define WHITE_FURNACE 0
 
 // If enabled, water will have its alpha channel enabled allowing diffuse contribution, otherwise alpha will be 0.
-#define ENABLE_WATER_DIFFUSE 0
+#define ENABLE_WATER_DIFFUSE 1
 
 // This will enable an HDR color space to use with your HDR monitor
 // This WILL require an external plugin like Reshade or Special K
@@ -94,15 +94,26 @@
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
 #define POINT_LIGHT_SHADOW_RADIUS 0.0325
-#define EMISSION_STENGTH  4.35
+#define EMISSION_STENGTH  4.5
 
-#define POINT_LIGHT_INTENSITY 50.0
-// Number of candidate lights streamed through the RIS reservoir before tracing a single shadow ray.
+#define POINT_LIGHT_INTENSITY 30.0
+// Integer distances in blocks: inverse-square falloff is unchanged until the fade starts.
+#define POINT_LIGHT_FADE_START 32
+#define POINT_LIGHT_FADE_END 64
+
+// 0 = surface BRDF-aware candidate weights; 1 = cheaper scene-brightness weights.
+// Both modes sample a random candidate pool; mode 1 does not build a scene-wide distribution.
+
+#define RIS_LIGHT_SELECTION_MODE 0
+
+
+// Maximum candidates streamed through the RIS reservoir before tracing the selected light's shadow rays.
 // Only applied on the primary (bounceCount == 0) hit -- see RIS_LIGHT_CANDIDATE_COUNT_INDIRECT below.
-#define RIS_LIGHT_CANDIDATE_COUNT 12
+#define RIS_LIGHT_CANDIDATE_COUNT 6
 // Candidate count used on indirect bounces instead, where the noise reduction matters far less
 // (throughput has already attenuated the contribution) but the cost is paid on every bounce/pixel.
-#define RIS_LIGHT_CANDIDATE_COUNT_INDIRECT 12
+#define RIS_LIGHT_CANDIDATE_COUNT_INDIRECT 4
+
 // Number of candidate diffuse GI bounce directions resampled via RIS before continuing the path.
 // Also primary-hit only; indirect bounces fall back to a single BRDF sample (no resampling).
 #define RIS_GI_CANDIDATE_COUNT 12
@@ -229,8 +240,8 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define WAVE_PULL                                           (0.34235)
 
 #define WAVE_STEEPNESS 0.04
-#define WAVE_HEIGHT  0.045
-#define WAVE_BASE_WAVELENGTH 5.8f
+#define WAVE_HEIGHT  0.065
+#define WAVE_BASE_WAVELENGTH 6.8f
 #define WAVE_COUNT 9
 
 // Gerstner Micro Wave Details (Inter-octave ripples and high-frequency capillary texture)
@@ -244,20 +255,20 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 
 // Water Parallax (POM)
 #define ENABLE_WATER_PARALLAX 1
-#define WATER_PARALLAX_STEPS 8
+#define WATER_PARALLAX_STEPS 6
 #define WATER_PARALLAX_MAX_DIST 24.5f
 
 
 
-#define AGX_MIN_EV -15.645
+#define AGX_MIN_EV -16.645
 #define AGX_MAX_EV 5.0
 
-#define AUTO_EXPOSURE_MIN -12.0
+#define AUTO_EXPOSURE_MIN -14.0
 #define AUTO_EXPOSURE_MAX 6.0
 
-#define EXPOSURE_MIN -1.1
-#define EXPOSURE_MAX 6.0
-#define EXPOSURE_MAX_DAY 6.0
+#define EXPOSURE_MIN -1.4
+#define EXPOSURE_MAX 4.5
+#define EXPOSURE_MAX_DAY 4.5
 #define EXPOSURE_MAX_NIGHT 4.0
 
 #define TARGET_EXPOSURE_EV 0.18
@@ -268,7 +279,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define MIN_ADAPTATION_LUMINANCE 0.045
 
 // Center-weighted metering bias: increases the importance of tiles near the screen center (player gaze).
-#define CENTER_METERING_STRENGTH 2.0
+#define CENTER_METERING_STRENGTH 4.0
 
 // Minimum tile average luminance to be counted in the histogram. Pitch black tiles are clipped out.
 #define BLACK_CLIP_LUMINANCE 0.0005
@@ -280,5 +291,49 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 
 // size of water droplets in micron diameters for mie phase 
 #define WATER_DROPLET_SIZE  34
+
+// Glossy and diffuse bounces see the mean of the star field and no moon disc (the moon still lights
+// them through its direct light sample). Removes the glitter of metals and rough surfaces at night;
+// mirror-like surfaces keep every star. 0 = stars and moon on every bounce, as before.
+#define PREFILTER_SKY_ON_ROUGH_BOUNCES 1
+
+// DLSS Ray Reconstruction through the RTXBoost mod (see RR-SUPPORT.md).
+// Only active while RTXBoost has RR turned on, otherwise the pack renders as usual.
+// 0 removes the RR code from the build entirely.
+#define ENABLE_RAY_RECONSTRUCTION 1
+
+// Water and glass: RR's albedo guide describes what is seen through the surface (one extra
+// ray per water / glass pixel in RR mode). 0 = the surface's own colour, as before.
+#define RR_TRANSPARENT_GUIDES 1
+
+// Use background surface depth and motion for primary fog-scattered rays in RR mode.
+#define RR_FOG_BACKGROUND_MOTION 1
+
+// Reduce primary air-fog direct-light noise in RR mode at the cost of an extra shadow ray.
+#define RR_FOG_DIRECT_SAMPLING 1
+
+/// Polished metal, still water and glass at grazing angles in RR mode: the guides describe the first
+// rough surface seen in the reflection or under the water, so RR keeps that image sharp (up to three
+// extra rays per mirror-like pixel, about 3-4 % FPS on an RTX 3050).
+// 0 = guides of the mirror surface itself.
+#define RR_PSR 1
+
+// Glossy surfaces in RR mode: the specular hit distance follows mirror-like bounces up to the first
+// rough surface instead of ending after the first bounce.
+#define RR_SPEC_CHAIN_HITDIST 1
+
+// RR's specular albedo guide includes the multiple-scattering energy brdf.hlsl adds to rough specular.
+// 0 = single scattering only.
+#define RR_SPEC_ALBEDO_MULTISCATTER 1
+
+// RR mode: the guides also carry the diffuse hit distance (how far the diffuse bounce off the
+// surface travelled), meant to help RR keep contact shadows and corners. Costs one probe ray on pixels
+// whose path did not bounce diffusely this frame (3-7 % FPS on an RTX 3050). Off by default: with the
+// 2026-11 driver's RR model the picture did not change at all, not even with the distance forced to 0
+// or to "far" everywhere. Needs RTXBoost 1.5.0 or newer; older versions ignore it.
+// 0 = specular hit distance only.
+#define RR_DIFFUSE_HITDIST 0
+
+
 
 #endif // SETTINGS_HLSL

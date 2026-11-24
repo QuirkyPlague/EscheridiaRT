@@ -29,7 +29,8 @@
     #include "Util.hlsl"
     #include "Water.hlsl"
     #include "colors.hlsl"
-    
+    #include "Tonemapping.hlsl"
+
     
 
     struct HitInfo
@@ -302,7 +303,7 @@
             color.a *= tintColor0.a; // This should be safe as long as tintColor0.a is always 1 by default for actors
         }
         
-        color.a = saturatedLinearRemapZeroToOne(color.a, 0.5, 1.0f);
+        
         float alpha = color.a;
         if (objectInstance.secondaryTextureIdx != 0xffff)
         {
@@ -488,6 +489,21 @@
         if (isActor) {
             EvaluateActorMaterial(objectInstance, hitInfo, uv, tintColor0, tintColor1, color, surfaceInfo.shouldDiscard);
         }
+        float emissive = 0.0;
+              // Filter for entity_alphatest materials
+		if (!(objectInstance.flags & kObjectInstanceFlagChunk) &&
+			objectInstance.objectCategory != MATERIAL_TYPE_ALPHA_BLEND &&
+			!(objectInstance.flags & kObjectInstanceFlagMultiplicativeTint) &&
+			color.a > 0.02)
+		{
+			// Inverse relationship with alpha to match vanilla renderer behaviour
+            float entityEmissive = 1 - color.a;
+            if (objectInstance.flags & kObjectInstanceFlagUsesOverlayColor) {
+                float4 overlayColour = tintColor1;
+                entityEmissive *= lerp(1.0, luminance(overlayColour.rgb), overlayColour.a);
+            }
+			surfaceInfo.emissive = mad(entityEmissive, entityEmissive, emissive); // Gamma 2 conversion from previous code
+		}
 
         // applyActorDiffuse()
         // applyOverlayColor()
@@ -508,7 +524,7 @@
             // TODO: should we also check for `pbr.flags != kInvalidPBRTextureHandle` ?
             float4 mers = float4(pbr.uniformMetalness, pbr.uniformEmissive, pbr.uniformRoughness, pbr.uniformSubsurface);
 
-            
+          
 
             if (pbr.flags & kPBRTextureDataFlagHasMaterialTexture)
             {
@@ -517,9 +533,12 @@
                 if (pbr.flags & kPBRTextureDataFlagHasSubsurfaceChannel)
                 mers.a = texel.a;
             }
+            
+            // encode in gamma 2 to match mcrtx
+            emissive = mad(mers.g, mers.g, emissive); 
             surfaceInfo.metalness = mers.r;
             surfaceInfo.metalness = mers.a > mers.r ? 0.0 : mers.r;
-            surfaceInfo.emissive = mers.g;
+            surfaceInfo.emissive = emissive;
             surfaceInfo.roughness = mers.b;
             surfaceInfo.subsurface = mers.a;
             surfaceInfo.subsurface = mers.r > mers.a ? 0.0 : mers.a;
@@ -625,7 +644,6 @@
         return surfaceInfo;
     }
 
-
     bool AlphaTestHitLogic1(HitInfo hitInfo)
     {
         #if CULL_GLASS_BACK_FACES
@@ -656,8 +674,9 @@
         float3 F0;
         float3 IOR;
         
-        void SetUp(inout SurfaceInfo surface, in GeometryInfo geom, in float3 direction, in int bounceCount, inout float hitDist, inout float parallaxHeight, in RayDesc ray)
+        void SetUp(inout SurfaceInfo surface, in GeometryInfo geom, in float3 direction, in int bounceCount, out float parallaxHeight)
         {
+            parallaxHeight = 0.0f;
             IOR = float3(1.333, 1.333, 1.333); // Default IOR for water
             color = 1.0;
             roughness = 0.00;
@@ -680,24 +699,53 @@
 
             float3 flatNormal = geom.geometryNormal;
             
-            GerstnerSample wave;
             /*
+            GerstnerSample wave;
+            
             #if ENABLE_WATER_PARALLAX
+                float3 flatPos = surface.position;
                 float3 displacedPos = surface.position;
                 parallaxHeight = EvaluateWaterParallax(
                 surface.position,
                 direction,
                 flatNormal,
                 g_view.waveWorksOriginInSteveSpace.xz,
-                g_view.time * 0.0,
+                g_view.time * 0.85,
                 waveFade,
                 displacedPos,
                 wave
                 );
                 surface.position = displacedPos;
+
+                if (bounceCount == 0 && abs(flatNormal.y) >= 0.5f && waveFade > 0.01f)
+                {
+                    float4 previousFrame = getPreviousWaterFrame();
+                    float2 currentXZ = flatPos.xz - g_view.waveWorksOriginInSteveSpace.xz;
+                    currentXZ -= floor(currentXZ / 1024.0f) * 1024.0f;
+                    currentXZ += displacedPos.xz - flatPos.xz;
+                    GerstnerSample currentWave = SampleGerstner(currentXZ, g_view.time * 0.85f);
+                    float2 previousXZ = surface.prevPosition.xz - previousFrame.yz;
+                    previousXZ -= floor(previousXZ / 1024.0f) * 1024.0f;
+                    previousXZ += displacedPos.xz - flatPos.xz;
+                    GerstnerSample previousWave = SampleGerstner(previousXZ, previousFrame.x * 0.85f);
+                    float2 previousPosXZ = surface.prevPosition.xz + (displacedPos.xz - flatPos.xz);
+                    float previousFade = 1.0f - smoothstep(WAVE_FADE_START, WAVE_FADE_END,
+                        length(surface.prevPosition.xz - g_view.previousViewOriginSteveSpace.xz));
+
+                    // Track a Gerstner material point; multiple wave directions cannot
+                    // be represented exactly by a single motion vector.
+                    float2 horizontalMotion = currentWave.horizontalOffset * waveFade -
+                        previousWave.horizontalOffset * previousFade;
+                    previousXZ -= horizontalMotion;
+                    previousWave = SampleGerstner(previousXZ, previousFrame.x * 0.85f);
+                    previousPosXZ -= horizontalMotion;
+                    surface.prevPosition.xz = previousPosXZ;
+                    surface.prevPosition.y += (displacedPos.y - flatPos.y) +
+                        previousWave.height * previousFade - currentWave.height * waveFade;
+                }
               
             #else
-                float3 worldPos = surfaceInfo.position - g_view.waveWorksOriginInSteveSpace;
+                float3 worldPos = surface.position - g_view.waveWorksOriginInSteveSpace;
                 worldPos = worldPos - floor(worldPos / 1024.0) * 1024.0;
                 wave = SampleGerstner(worldPos.xz, 0.0f);
             #endif

@@ -75,7 +75,7 @@
                 else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) { 
                     GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
                     SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object); 
-                   
+                    
 
                     transmission *= lerp(surfaceInfo.color, 0.0, surfaceInfo.alpha);
                     continue; 
@@ -86,7 +86,8 @@
                     
                     // Get depth from shadow ray origin to water intersection point
                     float3 waterExtinction = calcTransmittance(q.CandidateTriangleRayT(), getMediaExtinction(MEDIA_TYPE_WATER).rgb); 
-                    //transmission *= waterExtinction; 
+                    float3 caustics = sampleCausticsTexture(ray.Origin + ray.Direction * q.CandidateTriangleRayT(), q.CandidateTriangleRayT());
+                    transmission *= caustics; 
                     
                     continue; 
                 } 

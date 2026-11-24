@@ -1,26 +1,26 @@
 // This is from the MCRTX Shader template project https://github.com/veka0/mcrtx-shader-template?tab=readme-ov-file 
 /* MIT License
- * 
- * Copyright (c) 2025 veka0
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
+* 
+* Copyright (c) 2025 veka0
+* 
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
+* 
+* The above copyright notice and this permission notice shall be included in all
+* copies or substantial portions of the Software.
+* 
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+* SOFTWARE.
+*/
 
 // If enabled, will match vanilla graphics and cull transparent back faces. Refer to Renderer.hlsl to see what it does.
 #define CULL_GLASS_BACK_FACES 0
@@ -28,43 +28,47 @@
 #include "Include/Renderer.hlsl"
 #include "Include/Util.hlsl"
 #include "Include/DOF.hlsl"
+#include "Include/RayReconstruction.hlsl"
 
 [numthreads(4, 8, 1)]
 void PrimaryCheckerboardRayGenInline(
-    uint3 dispatchThreadID: SV_DispatchThreadID,
-    uint3 groupThreadID: SV_GroupThreadID,
-    uint groupIndex: SV_GroupIndex,
-    uint3 groupID: SV_GroupID)
+uint3 dispatchThreadID: SV_DispatchThreadID,
+uint3 groupThreadID: SV_GroupThreadID,
+uint groupIndex: SV_GroupIndex,
+uint3 groupID: SV_GroupID)
 {
     // *cricket noises*
     // Note that g_rootConstant0 from AdaptiveDenoiserCalculateGradients pass is accessible here
-   
+    
 
     // Below is an implementation of a basic ray traced vanilla-like shader.
     if (any(dispatchThreadID.xy >= g_view.renderResolution)) return;
     float hitDist; float3 objMotion; float3 color; float2 motionVector; float firstHitDist;
     
-   
-        RayDesc rayDesc;
-        PathRNG rngState;
-        rayDesc.Direction = rayDirFromNDC(getNDCjittered(dispatchThreadID.xy));
-        rayDesc.Origin = g_view.viewOriginSteveSpace;
+    
+    RayDesc rayDesc;
+    PathRNG rngState;
+    rayDesc.Direction = rayDirFromNDC(getNDCjittered(dispatchThreadID.xy));
+    rayDesc.Origin = g_view.viewOriginSteveSpace;
 
-        
-        float3 dofOrigin, dofDirection;
-        computeDOFRay(dispatchThreadID.xy, rayDesc.Origin, rayDesc.Direction, rngState, dofOrigin, dofDirection);
-        rayDesc.Origin = dofOrigin;
-        rayDesc.Direction = dofDirection;
-        
+    
+    float3 dofOrigin, dofDirection;
+    computeDOFRay(dispatchThreadID.xy, rayDesc.Origin, rayDesc.Direction, rngState, dofOrigin, dofDirection);
+    rayDesc.Origin = dofOrigin;
+    rayDesc.Direction = dofDirection;
+    
 
-         rayDesc.TMin = 0; rayDesc.TMax = 10000;
-        
-             
-     float3 directColor; float3 primaryThroughput;
-     color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy, firstHitDist);
+    rayDesc.TMin = 0; rayDesc.TMax = 10000;
+    
+    
+    float3 directColor; float3 primaryThroughput;
+    rrBeginPixel(dispatchThreadID.xy); // DLSS Ray Reconstruction guides (RayReconstruction.hlsl)
+    color = RenderRay(rayDesc, hitDist, objMotion, dispatchThreadID.xy, firstHitDist);
 
-     float4 blueNoise = GetBlueNoiseValue(dispatchThreadID.xy);
-      float3 sunDir =  getDirectionToSun();
+     rrFinishDiffuseHitDistance(dispatchThreadID.xy); // DLSS Ray Reconstruction: diffuse hit distance (RayReconstruction.hlsl)
+     
+    float4 blueNoise = GetBlueNoiseValue(dispatchThreadID.xy);
+    float3 sunDir =  getDirectionToSun();
     float3 moonDir = -sunDir;
 
     float sunFade = saturate(sunDir.y);
@@ -72,25 +76,33 @@ void PrimaryCheckerboardRayGenInline(
 
     float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
     float dist = length(g_view.viewOriginSteveSpace);
-   
     
     
-        
-motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * hitDist, objMotion);
-   
+    
+    
+    // DLSS Ray Reconstruction: depth and motion of the surface the guides describe (RayReconstruction.hlsl)
+    float guideDist = hitDist;
+    float3 guideMotion = objMotion;
+    rrGuidePoint(guideDist, guideMotion);
+    motionVector  = computeMotionVector(rayDesc.Origin + rayDesc.Direction * guideDist, guideMotion);
+    
 
     // Basic debug views for NaNs and Infinity
     #if 1
-    if (any(isinf(color)) || any(isinf(motionVector)) || isinf(hitDist))
-        color = (dispatchThreadID.x / 32 + dispatchThreadID.y / 32) & 1 ? float3(1, 1, 0) : 0;
-    if (any(isnan(color)) || any(isnan(motionVector)) || isnan(hitDist))
-        color = (dispatchThreadID.x / 32 + dispatchThreadID.y / 32) & 1 ? float3(1, 0, 1) : 0;
+        if (any(isinf(color)) || any(isinf(motionVector)) || isinf(hitDist)) {
+            color = (dispatchThreadID.x / 32 + dispatchThreadID.y / 32) & 1 ? float3(1, 1, 0) : 0;
+        }
+        if (any(isnan(color)) || any(isnan(motionVector)) || isnan(hitDist)) {
+            color = (dispatchThreadID.x / 32 + dispatchThreadID.y / 32) & 1 ? float3(1, 0, 1) : 0;
+        }
     #endif
 
-   
+    
 
     // The only 3 buffers necessary for upscaling support (e.g. DLSS)
     outputBufferIndirectDiffuse[dispatchThreadID.xy] = float4(color, 1);
     outputBufferMotionVectors[dispatchThreadID.xy] = motionVector;
     outputBufferReprojectedPathLength[dispatchThreadID.xy] = hitDist;
+
+     rrEndPixel(rayDesc.Origin, rayDesc.Direction, guideDist); // DLSS Ray Reconstruction guides (RayReconstruction.hlsl)
 }

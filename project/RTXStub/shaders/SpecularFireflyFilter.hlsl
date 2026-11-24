@@ -1,4 +1,5 @@
 #include "Include/Generated/Signature.hlsl"
+#include "Include/RayReconstruction.hlsl"
 
 [numthreads(16, 16, 1)]
 void SpecularFireflyFilter(
@@ -23,6 +24,7 @@ void SpecularFireflyFilter(
         return;
     }
 
+    float centerDepth = inputBufferPrimaryPathLength[pixel];
     // Keep real emissive surfaces intact; this pass is meant to remove noisy
     // transport outliers, not dim the light source itself.
     float3 emissive = inputEmissiveAndLinearRoughness[pixel].rgb;
@@ -32,7 +34,6 @@ void SpecularFireflyFilter(
         return;
     }
 
-    float centerDepth = inputBufferPrimaryPathLength[pixel];
     float neighborLuminances[8];
     uint neighborCount = 0;
     float neighborMaximum = 0.0;

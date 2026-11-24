@@ -30,7 +30,7 @@
 // Primary mask - with 1st person hand, secondary - without
 // Blend mask doesn't include water or sun/moon
 #define INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_PRIMARY   (1 << 0)
-#define INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY (1 << 1)
+#define INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_SECONDARY (1 << 0)
 #define INSTANCE_MASK_OPAQUE_OR_ALPHA_TEST_CHUNKS    (1 << 2) // No actors/entities
 #define INSTANCE_MASK_ALPHA_BLEND_PRIMARY            (1 << 3)
 #define INSTANCE_MASK_ALPHA_BLEND_SECONDARY          (1 << 4)

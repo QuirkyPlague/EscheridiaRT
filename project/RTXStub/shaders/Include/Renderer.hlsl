@@ -34,6 +34,7 @@
     #include "water.hlsl"
     #include "fog.hlsl"
     #include "DirectLighting.hlsl"
+    #include "RayReconstruction.hlsl"
     
     static const uint kBlueNoiseLayerMask = kBlueNoiseLayerCount - 1;
 
@@ -64,6 +65,45 @@
         lightData.intensity = (float)((packedData >> 0) & 0xff) / 255.0;
         return lightData;
     }
+      float PointLightDistanceFade(float distanceSquared)
+    {
+        return 1.0;
+    }
+
+    float3 PointLightSpecular(float3 N, float3 V, float3 L, float3 F0, float roughness, float NdotV, float viewMasking, out float3 fresnel)
+    {
+        float3 H = normalize(V + L);
+        float NdotL = max(dot(N, L), 0.0);
+        float NdotH = max(dot(N, H), 0.0001);
+        float VdotH = max(dot(V, H), 0.0001);
+        fresnel = fresnelSchlick(VdotH, F0);
+        float distribution = D_GGX(NdotH, roughness * roughness);
+        float geometry = viewMasking * G1_SmithGGX(NdotL, roughness);
+        return fresnel * distribution * geometry / max(4.0 * NdotV * NdotL, 1e-6);
+    }
+
+    float PointLightTarget(LightInfo lightInfo, SurfaceInfo surface, float3 N, float3 ng, float3 V,
+        float diffuseWeight, float NdotV, float viewMasking, out float3 specular, out float3 fresnel)
+    {
+        specular = 0.0;
+        fresnel = 0.0;
+        LightData lightData = UnpackLight(lightInfo.packedData);
+        float3 toLight = float3(lightInfo.position) - surface.position;
+        float distanceSquared = dot(toLight, toLight);
+        float distanceFade = PointLightDistanceFade(distanceSquared);
+        if (distanceFade <= 0.0) return 0.0;
+        float3 lightDirection = toLight * rsqrt(max(distanceSquared, 1e-6));
+        float NdotL = max(dot(N, lightDirection), 0.0);
+        if (NdotL <= 0.0 || dot(ng, lightDirection) <= 0.0) return 0.0;
+
+        specular = PointLightSpecular(N, V, lightDirection, surface.F0, surface.roughness, NdotV, viewMasking, fresnel);
+        float3 diffuse = (1.0 - fresnel) * surface.color * (1.0 - surface.metalness) * diffuseWeight / PI;
+        // Keep support for contributions missed by the approximate diffuse target.
+        float targetBRDF = luminance(lightData.color * (max(diffuse + specular, 0.0) + 1e-4));
+        return targetBRDF * lightData.intensity * POINT_LIGHT_INTENSITY *
+        NdotL * distanceFade / max(distanceSquared, 1e-4);
+    }
+
 
     struct RayState
     {
@@ -72,6 +112,7 @@
         float3 throughput;
         float distance;
         float3 motion;
+        float primaryParallaxOffset;
         uint instanceMask; // 8 bits, see INSTANCE_MASK macros in Constants.hlsl
         bool hitWater;
         bool inSSSMedium;
@@ -83,6 +124,7 @@
         float3 sssSigmaS;
         float3 sssSigmaT;
         bool scattered;
+        float lobeRoughness; // roughness of the lobe that picked the current direction (0 = camera ray or mirror)
 
         void Init()
         {
@@ -90,6 +132,7 @@
             throughput = 1;
             distance = 0;
             motion = 0;
+            primaryParallaxOffset = 0;
             instanceMask = 0xff & ~INSTANCE_MASK_SUN_OR_MOON;
             hitWater = false;
             inSSSMedium = false;
@@ -101,10 +144,11 @@
             sssSigmaS = 0;
             sssSigmaT = 0;
             scattered = false;
+            lobeRoughness = 0;
         }
     };
 
-    void RenderSky(inout RayState rayState, in RayDesc ray, inout PathRNG rng, bool isPrimaryRay)
+    void RenderSky(inout RayState rayState, in RayDesc ray, inout PathRNG rng, bool isPrimaryRay, int bounce)
     {
         if (all(rayState.throughput == 0)) return;
         
@@ -127,17 +171,34 @@
         mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
         // The atmosphere function adds the planet radius internally; pass the
         // existing 1000-meter offset converted to kilometers.
-        const float minSunIntensity = 3.448;
+        float minSunIntensity = 2.448;
+        // check if the current bounce is not the primary ray
+        // why?
+        // if its not the primary ray we can artificially increase the min intensity so nighttime has more indirect contribution without actually making the sky brighter
+        if(bounce > 1)
+        {
+            minSunIntensity *= 2.0; // Increase the minimum sun intensity for indirect bounces at night
+        }
         sunStrength = max(sunStrength, minSunIntensity); // This allows for the sun to have an effect on the sky even after sunset
         float3 worldPos = float3(0,500,0);
         float3 rayOriginKm = worldPos * 0.001;
-        
+
+        // Stars and the moon disc are tiny and very bright. A glossy or diffuse bounce finds them only by
+        // chance, so they turn into glitter that hardly adds any light; such bounces see the star field's
+        // mean instead, and the moon only through its direct light sample (as the sun). Mirror-like
+        // bounces (still water, glass) keep both.
+        #if PREFILTER_SKY_ON_ROUGH_BOUNCES
+        float skyDetail = isPrimaryRay ? 1.0 : 1.0 - smoothstep(0.05, 0.15, rayState.lobeRoughness);
+        #else
+        float skyDetail = 1.0;
+        #endif
+
         float3 finalColor = RenderHillaireAnalytical(
         rayOriginKm,
         rayState.rayDesc.Direction,
         mainLightDir,
         sunStrength,
-        rng,true,isPrimaryRay);
+        rng,skyDetail,isPrimaryRay);
         
         
         
@@ -171,7 +232,7 @@
                 N = -N;
             }
             float3 effectiveH = normalize(lerp(N, N + V, surfaceInfo.roughness * surfaceInfo.roughness));
-            float3 kS = fresnelSchlick(max(dot(V,N), 0.001), surfaceInfo.F0);
+            float3 kS = fresnelSchlick(max(dot(V,effectiveH), 0.001), surfaceInfo.F0);
             float3 T; float3 B;
             BuildOrthonormalBasis(N, T, B);
             float3 tangentView = float3(dot(V, T),dot(V, B),dot(V, N));
@@ -282,17 +343,18 @@
             mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
             float3 endTwinSunDir = END_TWIN_SUN_DIRECTION;
             float3 direction = normalize(rayState.rayDesc.Direction);
-            float flatPlaneY = surfaceInfo.position.y;
+            float3 geometryPosition = surfaceInfo.position;
+            float3 geometryPreviousPosition = surfaceInfo.prevPosition;
+            bool useFlatWaterGuide = hitInfo.materialType == MATERIAL_TYPE_WATER && isUpscalingEnabled() && !g_rrActive;
 
             float parallaxHeight = 0.0f;
             float waterIOR = 1.333f;
             if (hitInfo.materialType == MATERIAL_TYPE_WATER) 
             {
                 WaterMaterial waterMat;
-                waterMat.SetUp(surfaceInfo, geometryInfo, direction, bounceCount, firstHitDist, parallaxHeight, ray);
+                waterMat.SetUp(surfaceInfo, geometryInfo, direction, bounceCount, parallaxHeight);
                 waterIOR = waterMat.IOR.x;
-                // ensure the value cannot go negative so the ray always starts at the surface
-                parallaxHeight = max(1e-4, parallaxHeight);
+                if (bounceCount == 0) rayState.primaryParallaxOffset = useFlatWaterGuide ? 0.0 : parallaxHeight;
             }
             bool isCloud = objectInstance.flags & kObjectInstanceFlagClouds;
             if (hitInfo.materialType == MATERIAL_TYPE_OPAQUE || hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST) surfaceInfo.alpha = 1;
@@ -300,6 +362,7 @@
             float NdotL = max(dot(surfaceInfo.normal, mainLightDir),0.0001);
 
             float3 nextDirection;
+            float lobeRoughness = 1.0f; // diffuse unless a reflection or refraction lobe is picked below
             float3 N = surfaceInfo.normal;
             float3 V = -direction;
             float3 ng = geometryInfo.geometryNormal;
@@ -316,9 +379,14 @@
             float3 T; float3 B;
             BuildOrthonormalBasis(N, T, B);
             float3 tangentView = float3(dot(V, T),dot(V, B),dot(V, N));
+            float3 microfacetNormal = SampleVNDFGGX(tangentView, surfaceInfo.roughness * surfaceInfo.roughness, XiSpec); 
+            float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
+            float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N); 
 
             bool isWater = hitInfo.materialType == MATERIAL_TYPE_WATER; 
             float3 F0 = surfaceInfo.F0; 
+            // DLSS Ray Reconstruction guides of the primary surface (RayReconstruction.hlsl)
+           if (bounceCount == 0) rrWritePrimarySurfaceGuide(surfaceInfo.position, ng, N, V, surfaceInfo.roughness, surfaceInfo.color, surfaceInfo.metalness, F0);
             
             /*
             #if DO_RAIN_WETNESS
@@ -352,7 +420,7 @@
             
             float roughness = max(surfaceInfo.roughness * surfaceInfo.roughness, 0.0);
             float3 effectiveH = normalize(lerp(N, N + V, surfaceInfo.roughness * surfaceInfo.roughness));
-            float3 kS = fresnelSchlick(max(dot(V,effectiveH), 0.001), F0);
+            float3 kS = fresnelSchlick(max(dot(V,H), 0.001), F0);
             
             float specularProbability = saturate(luminance(kS));
 
@@ -369,16 +437,21 @@
             bool isFullyOpaqueAlphaBlend = hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && surfaceInfo.alpha >= 0.9999f;
             bool isTransparentSurface = hitInfo.materialType == MATERIAL_TYPE_WATER || (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !isFullyOpaqueAlphaBlend);
             
+             // DLSS Ray Reconstruction: a polished metal's guides describe what it reflects (RayReconstruction.hlsl)
+            if (bounceCount == 0) rrReplacePrimarySurface(hitInfo.materialType, surfaceInfo, ng, N, V, 1.0, inWater);
+
             bool rayRefractedGoesInside = false;
 
-            // A diffuse interface leads into a chromatic random-walk medium.
+           
             bool isAlphaTest = hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST;
             float sssDistance = isAlphaTest ? 0.15 : 0.35;
             bool isSSSVolume = surfaceInfo.subsurface > 0.0 && !isCloud && !isTransparentSurface && !inWater && (hitInfo.materialType == MATERIAL_TYPE_OPAQUE || hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST);
 
-            // Split non-specular energy between volumetric SSS and standard diffuse reflection.
-            
-            float sssMaxProb =  saturate(surfaceInfo.subsurface * 0.65);
+
+            // SSS takes a bit of diffuse energy
+            // With the new random-walk model this likely doesnt need to be as harsh of a cutoff anymore
+            // TODO: MAKE MAX PROBABILITY SETTING 
+            float sssMaxProb =  saturate(surfaceInfo.subsurface);
             float sssProbability = isSSSVolume ? (1.0 - specularProbability) * sssMaxProb : 0.0;
             float diffuseProbability = isTransparentSurface ? 0.0f : max((1.0 - specularProbability - sssProbability), 1e-4);
             float sssEnergyFraction = isSSSVolume ? sssMaxProb : 0.0;
@@ -391,6 +464,13 @@
                 float eta = isWater
                     ? (inWater ? waterIOR : 1.0f / waterIOR)
                     : (hitInfo.frontFacing ? (1.0f / 1.5f) : 1.5f);
+
+                    // DLSS Ray Reconstruction: still water and clear glass describe what they reflect or let through (RayReconstruction.hlsl)
+                if (bounceCount == 0) rrReplacePrimarySurface(hitInfo.materialType, surfaceInfo, ng, N, V, eta, inWater);
+                #if RR_TRANSPARENT_GUIDES
+                // DLSS Ray Reconstruction: guides for what the pixel shows through the surface (RayReconstruction.hlsl)
+                if (bounceCount == 0) rrWriteTransparentPrimaryGuide(isWater ? geometryPosition : surfaceInfo.position, ng, N, V, surfaceInfo.roughness, surfaceInfo.color, surfaceInfo.alpha, eta, isWater);
+                #endif
                 float alpha = max(roughness, 0.0001f);
                 float3 microfacetNormalTS = SampleVNDFGGX(tangentView, alpha, XiSpec);
                 float3 microfacetNormal = normalize(microfacetNormalTS.x * T + microfacetNormalTS.y * B + microfacetNormalTS.z * N);
@@ -403,6 +483,7 @@
                 if (Xi.x < F_diel)
                 {
                     nextDirection = reflect(direction, microfacetNormal);
+                    lobeRoughness = surfaceInfo.roughness;
                     if (dot(N, nextDirection) <= 0.0f || dot(ng, nextDirection) <= 0.0f)
                     {
                         rayColor = 0.0;
@@ -415,6 +496,7 @@
                 else if (Xi.x < F_diel + transmissionProbability)
                 {
                     nextDirection = refract(direction, microfacetNormal, eta);
+                    lobeRoughness = surfaceInfo.roughness;
                     if (dot(nextDirection, nextDirection) < 1e-6f ||
                         dot(N, nextDirection) >= 0.0f || dot(ng, nextDirection) >= 0.0f)
                     {
@@ -447,11 +529,9 @@
             }
             else if (Xi.x < specularProbability)
             {
-                float3 microfacetNormal = SampleVNDFGGX(tangentView, roughness, XiSpec); 
-                float3 tangentReflDir = reflect(-tangentView, microfacetNormal); 
                 nextDirection = normalize(tangentReflDir.x * T +tangentReflDir.y * B +tangentReflDir.z * N);
-                float3 H = normalize(microfacetNormal.x * T + microfacetNormal.y * B + microfacetNormal.z * N); 
                 rayColor *= specularBRDFGGX(N, nextDirection, V, F0,H, surfaceInfo.roughness, specularProbability);
+                lobeRoughness = surfaceInfo.roughness;
             }
             else if (Xi.x < specularProbability + sssProbability)
             {
@@ -523,7 +603,7 @@
             float4 sunColor = inEnd ? float4(END_SUN_COLOR, END_SUN_INTENSITY) : getSunColor(float4(0.0, 0.0, 0.0, 0.0));
             float sunIntensity = inEnd ? END_SUN_INTENSITY : SUN_INTENSITY;
             float sunEv = 1.0 * exp2(sunColor.a * sunIntensity);
-            DirectLight light = sampleDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, surfaceInfo, N, ng, V, directDiffuseWeight, rng, inWater);
+            DirectLight light = sampleDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, surfaceInfo, geometryPosition, N, ng, V, directDiffuseWeight, rng, inWater);
             
             totalRadiance +=  light.radiance;
             
@@ -543,6 +623,133 @@
                 totalRadiance = 0;
             }
 
+                      if (g_view.cpuLightsCount > 0 && !isBlockBreakingOverlay)
+            {
+                uint lightCount = min(g_view.cpuLightsCount, 98304u);
+                uint candidateCount = min(lightCount, uint(bounceCount == 0 ? RIS_LIGHT_CANDIDATE_COUNT : RIS_LIGHT_CANDIDATE_COUNT_INDIRECT));
+                Reservoir lightReservoir;
+                InitReservoir(lightReservoir);
+                float NdotView = max(dot(N, V), 0.0001);
+                float viewMasking = G1_SmithGGX(NdotView, surfaceInfo.roughness);
+                LightInfo selectedLight;
+                selectedLight.position = 0.0;
+                selectedLight.packedData = 0;
+                float selectedTarget = 0.0;
+                #if RIS_LIGHT_SELECTION_MODE == 0
+                float3 selectedSpecular = 0.0;
+                float3 selectedFresnel = 0.0;
+                #endif
+
+                [loop]
+                for (uint candidate = 0; candidate < candidateCount; ++candidate)
+                {
+                    uint candidateIndex = min(uint(NextFloat(rng) * lightCount), lightCount - 1u);
+                    LightInfo candidateLight = inputLightsBuffer[candidateIndex];
+                    #if RIS_LIGHT_SELECTION_MODE == 1
+                    LightData candidateData = UnpackLight(candidateLight.packedData);
+                    float3 candidateToLight = float3(candidateLight.position) - surfaceInfo.position;
+                    float candidateFade = PointLightDistanceFade(dot(candidateToLight, candidateToLight));
+                    float target = luminance(candidateData.color) * candidateData.intensity * candidateFade;
+                    #else
+                    float3 candidateSpecular, candidateFresnel;
+                    float target = PointLightTarget(candidateLight, surfaceInfo, N, ng, V, directDiffuseWeight,
+                        NdotView, viewMasking, candidateSpecular, candidateFresnel);
+                    #endif
+                    if (UpdateReservoir(lightReservoir, candidateIndex, target * float(lightCount), rng))
+                    {
+                        selectedLight = candidateLight;
+                        selectedTarget = target;
+                        #if RIS_LIGHT_SELECTION_MODE == 0
+                        selectedSpecular = candidateSpecular;
+                        selectedFresnel = candidateFresnel;
+                        #endif
+                    }
+                }
+
+                if (lightReservoir.weightSum > 0.0)
+                {
+                    LightData lightData = UnpackLight(selectedLight.packedData);
+                    float3 toLight = float3(selectedLight.position) - surfaceInfo.position;
+                    float lightDistanceSquared = dot(toLight, toLight);
+                    float lightDistanceFade = PointLightDistanceFade(lightDistanceSquared);
+                    float lightDistance = sqrt(max(lightDistanceSquared, 1e-6));
+                    float3 lightDirection = toLight / lightDistance;
+                    float NdotLight = max(dot(N, lightDirection), 0.0);
+                    float lightDistanceSqClamped = max(lightDistanceSquared, 1e-4);
+                    FinalizeReservoir(lightReservoir, selectedTarget);
+
+                    if (lightReservoir.W > 0.0 && lightDistanceFade > 0.0 && NdotLight > 0.0 && dot(ng, lightDirection) > 0.0 &&
+                        dot(N, V) > 0.0 && dot(ng, V) > 0.0)
+                    {
+                        #if RIS_LIGHT_SELECTION_MODE == 1
+                        float3 lightFresnel;
+                        float3 lightSpecular = PointLightSpecular(N, V, lightDirection, F0, surfaceInfo.roughness, NdotView, viewMasking, lightFresnel);
+                        #else
+                        float3 lightFresnel = selectedFresnel;
+                        float3 lightSpecular = selectedSpecular;
+                        #endif
+
+                        float3 diffuseColor = surfaceInfo.color * (1.0 - surfaceInfo.metalness);
+                        float3 lightDiffuse;
+                        #if DIFFUSE_METHOD == 1
+                            float3 localLight = float3(
+                            dot(lightDirection, T),
+                            dot(lightDirection, B),
+                            NdotLight);
+                            float3 localView = float3(
+                            dot(V, T),
+                            dot(V, B),
+                            NdotView);
+                            lightDiffuse = (1.0 - lightFresnel) * f_EON(diffuseColor, surfaceInfo.roughness, localLight, localView, USE_ACCURATE_DIFFUSE_BRDF);
+                        #elif DIFFUSE_METHOD == 2
+                            float3 halfVector = normalize(V + lightDirection);
+                            float VdotHalf = max(dot(V, halfVector), 0.0001);
+                            float3 F_V = fresnelSchlick(NdotView, F0);
+                            float3 F_L = fresnelSchlick(NdotLight, F0);
+                            float facingFactor = 0.5 + 2.0 * VdotHalf * VdotHalf * surfaceInfo.roughness;
+                            float3 hammonShape = (1.0 - F_V) * (1.0 - F_L) *
+                            (1.0 + (facingFactor - 1.0) * pow(1.0 - NdotView, 5.0)) *
+                            (1.0 + (facingFactor - 1.0) * pow(1.0 - NdotLight, 5.0));
+                            lightDiffuse = hammonShape * diffuseColor / PI;
+                        #else
+                            lightDiffuse = (1.0 - lightFresnel) * diffuseColor / PI;
+                        #endif
+                        float3 lightBRDF = lightDiffuse * directDiffuseWeight + lightSpecular;
+
+                        RayDesc lightShadowRay;
+                        float3 lightShadowTransmission = 0.0;
+                        lightShadowRay.Origin = offset_ray(surfaceInfo.position, ng);
+                        lightShadowRay.TMin = 0.0;
+                        lightShadowRay.TMax = max(lightDistance - 0.55, 0.0);
+
+                        [loop]
+                        for (uint shadowSample = 0; shadowSample < POINT_LIGHT_SHADOW_SAMPLES; ++shadowSample)
+                        {
+                            lightShadowRay.Direction = randConeJitter(lightDirection, POINT_LIGHT_SHADOW_RADIUS, NextFloat2(rng));
+                            if (lightShadowRay.TMax > lightShadowRay.TMin)
+                            {
+                                shadowPayload lightShadow;      
+                                TraceShadowRay(lightShadowRay, lightShadow);
+                                lightShadowTransmission += lightShadow.transmission;
+                            }
+                            else
+                            {
+                                lightShadowTransmission += 1.0;
+                            }
+                        }
+                        lightShadowTransmission /= float(POINT_LIGHT_SHADOW_SAMPLES);
+
+                        float3 lightRadiance = lightData.color * lightData.intensity * POINT_LIGHT_INTENSITY;
+                        lightRadiance *= NdotLight * lightDistanceFade / lightDistanceSqClamped;
+                        lightRadiance *= lightShadowTransmission;
+                        lightRadiance *= lightBRDF;
+                        lightRadiance *= lightReservoir.W;
+                        totalRadiance += lightRadiance;
+                    }
+                }
+            }
+            
+
             if (dot(nextDirection, ng) < 0.0 && (isTransparentSurface || isSSSVolume)) ng = -ng;
 
             // Enchantment Glint (unlit effect)
@@ -550,31 +757,38 @@
             totalRadiance += (sin(3.0 * g_view.time) * 0.5 + 0.5) * (float3(077, 23, 255) / 255.0);
 
 
+  
             
-            #if ENABLE_WATER_PARALLAX
-                if (hitInfo.materialType == MATERIAL_TYPE_WATER)
-                {
-                    if (dot(nextDirection, geometryInfo.geometryNormal) > 0.0f)
-                    {
-                        surfaceInfo.position.y = max(surfaceInfo.position.y, flatPlaneY);
-                    }
-                    else
-                    {
-                        surfaceInfo.position.y = min(surfaceInfo.position.y, flatPlaneY);
-                    }
-                }
-            #endif
+            if (dot(nextDirection, ng) < 0.0 && (isTransparentSurface || isSSSVolume)) ng = -ng;
+            
+            float3 surfaceMotion = surfaceInfo.position - surfaceInfo.prevPosition;
+            if (bounceCount == 0 && useFlatWaterGuide)
+                surfaceMotion = geometryPosition - geometryPreviousPosition;
             
             rayState.color += totalRadiance * rayState.throughput;
             rayState.throughput *= rayColor  * transmission;
             rayState.rayDesc.Direction = nextDirection; 
+            rayState.lobeRoughness = lobeRoughness;
             if (dot(nextDirection, ng) < 0.0 && isTransparentSurface) ng = -ng;
-            rayState.rayDesc.Origin = offset_ray(surfaceInfo.position, ng);
+            rayState.rayDesc.Origin = offset_ray(isWater ? geometryPosition : surfaceInfo.position, ng);
 
             // Update other ray properties
             rayState.distance += hitInfo.rayT;
-            rayState.motion += surfaceInfo.position - surfaceInfo.prevPosition;
+            rayState.motion += surfaceMotion;
         #endif
+    }
+
+    float3 SampleFogDirectRadiance(float3 position, float3 direction, float3 lightDirection,
+        float dropletSize, float3 sigmaT, bool hitWater, PathRNG rng)
+    {
+        float sunRadius = inEnd ? END_SUN_RADIUS : SUN_RADIUS;
+        float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0));
+        float sunEv = 0.3 * exp2(sunColor.a * SUN_INTENSITY);
+        DirectLight light = sampleVolumetricDirectLightData(lightDirection, sunColor.rgb, sunEv,
+            sunRadius, true, position, direction, rng, hitWater, false, sigmaT);
+        float gHG, gD, alpha, draineWeight;
+        GetApproximateMieParameters(dropletSize, gHG, gD, alpha, draineWeight);
+        return light.radiance * PhaseApproximateMie(dot(direction, light.direction), gHG, gD, alpha, draineWeight);
     }
 
     float3 RenderRay(RayDesc rayDesc, out float outputDistance, out float3 outputMotion, in float2 pixelPos, inout float firstHitDist)
@@ -627,6 +841,7 @@
                 HitInfo hitInfo = GetCommittedHitInfo(q);
                 surface = hitInfo.rayT;
             }
+              rrNoteBounceDistance(i, hitSurface, surface); // DLSS Ray Reconstruction: hit distances (RayReconstruction.hlsl)
 
             if (rayState.inSSSMedium)
             {
@@ -674,6 +889,7 @@
                     rayState.throughput *= transmittance * rayState.sssSigmaS / distancePdf;
                     float3 scatterPos = rayState.rayDesc.Origin + rayState.rayDesc.Direction * (start + distance);
                     rayState.rayDesc.Direction = SampleUniformSphere(NextFloat2(rng));
+                    rayState.lobeRoughness = 1.0;
                     rayState.rayDesc.Origin = offset_ray(scatterPos, rayState.rayDesc.Direction);
                     rayState.rayDesc.TMin = 0.0;
                     rayState.scattered = true;
@@ -744,214 +960,245 @@
                     rayState.sssSigmaT = 0.0;
                     rayState.sssSigmaS = 0.0;
                     rayState.rayDesc.Direction = CosineHemisphereSampling(NextFloat2(rng), exitNormal);
+                    rayState.lobeRoughness = 1.0;
                     rayState.rayDesc.Origin = offset_ray(exitPos, exitNormal);
                     rayState.rayDesc.TMin = 0.0;
                 }
 
-                if (i > 1)
-                {
-                    float p = min(max(rayState.throughput.x, max(rayState.throughput.y, rayState.throughput.z)), 0.95f);
-                    if (p <= 0.0 || NextFloat(rng) >= p) break;
-                    rayState.throughput /= p;
-                }
-                if (all(rayState.throughput == 0)) break;
-                continue;
-            }
-
-            float volumeStart = rayState.rayDesc.TMin;
-            float volumeExit = rayState.rayDesc.TMax;
-            float3 sigmaS3;
-            float3 sigmaT3;
-            float waterDropletSize = WATER_DROPLET_SIZE;
-            if (rayState.hitWater)
-            {
-                sigmaT3 = max(getMediaExtinction(MEDIA_TYPE_WATER).rgb, 0.0);
-                sigmaS3 = min(float3(0.01, 0.04, 0.065), sigmaT3);
-                waterDropletSize = 16;
+               
             }
             else
             {
-                float atmosphereT0;
-                float atmosphereT1;
-                float ATMOSPHERE_RADIUS = 550.0f;
-
-                if (RaySphereIntersect(rayState.rayDesc.Origin,rayState.rayDesc.Direction,ATMOSPHERE_RADIUS,atmosphereT0,atmosphereT1))
+                float volumeStart = rayState.rayDesc.TMin;
+                float volumeExit = rayState.rayDesc.TMax;
+                float3 sigmaS3;
+                float3 sigmaT3;
+                float waterDropletSize = WATER_DROPLET_SIZE;
+                if (rayState.hitWater)
                 {
-                    volumeStart = max(volumeStart, atmosphereT0);
-                    volumeExit = min(volumeExit, atmosphereT1);
+                    sigmaT3 = max(getMediaExtinction(MEDIA_TYPE_WATER).rgb, 0.0);
+                    sigmaS3 = min(float3(0.01, 0.04, 0.065), sigmaT3);
+                    waterDropletSize = 16;
                 }
                 else
                 {
-                    volumeStart = volumeExit;
-                }
+                    float atmosphereT0;
+                    float atmosphereT1;
+                    float ATMOSPHERE_RADIUS = 550.0f;
 
-                #if OVERRIDE_END_FOG_SCATTERING
-                    sigmaS3 = END_FOG_SCATTERING_COLOR * END_FOG_SCATTERING_INTENSITY;
-                #else
-                    sigmaS3 = getScattering();
-                #endif
-                sigmaT3 =
-                inEnd ?
-                getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY :
-                g_view.cameraIsUnderWater ? getMediaExtinction(MEDIA_TYPE_AIR).rgb : getMediaPrimaryExtinction();
-
-                sigmaT3 = lerp(
-                sigmaT3,
-                float3(0.0125, 0.0125, 0.0125),
-                getBiomeAdjustedRainLevel());
-            }
-
-            float tEnd = min(surface, volumeExit);
-            // Construct the homogenous medium
-            // https://la.disneyresearch.com/wp-content/uploads/Monte-Carlo-Methods-for-Volumetric-Light-Transport-Simulation-Paper.pdf
-            // Construct the homogenous medium
-
-            // Majorant for delta tracking.
-            float medium = tEnd;
-            float densityModifier = 0.0f;
-            bool mediumScattered = false;
-            float3 waterSegmentWeight = 1.0;
-
-            #if !WHITE_FURNACE
-                if (rayState.hitWater && volumeStart < tEnd)
-                {
-                    uint channel = min((uint)(NextFloat(rng) * 3.0f), 2u);
-                    float sampledSigmaT = sigmaT3[channel];
-                    float segmentLength = tEnd - volumeStart;
-                    float distance = sampledSigmaT > 0.0f
-                        ? -log(max(1.0f - NextFloat(rng), 1e-7f)) / sampledSigmaT
-                        : segmentLength;
-                    mediumScattered = distance < segmentLength;
-                    float traveled = mediumScattered ? distance : segmentLength;
-                    float3 transmittance = exp(-sigmaT3 * traveled);
-                    float3 distanceDensity = mediumScattered ? transmittance * sigmaT3 : transmittance;
-                    float distancePdf = (distanceDensity.x + distanceDensity.y + distanceDensity.z) / 3.0f;
-                    if (distancePdf <= 0.0f) break;
-                    waterSegmentWeight = mediumScattered
-                        ? transmittance * sigmaS3 / distancePdf
-                        : transmittance / distancePdf;
-                    if (mediumScattered)
+                    if (RaySphereIntersect(rayState.rayDesc.Origin,rayState.rayDesc.Direction,ATMOSPHERE_RADIUS,atmosphereT0,atmosphereT1))
                     {
-                        medium = volumeStart + distance;
-                        densityModifier = 1.0f;
-                        rayState.scattered = true;
+                        volumeStart = max(volumeStart, atmosphereT0);
+                        volumeExit = min(volumeExit, atmosphereT1);
                     }
-                }
-                else if (volumeStart < tEnd)
-                {
-                    float majorant = max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z));
-                    majorant = max(majorant, 1e-6f);
-
-                    float t = volumeStart;
-                    // limit to 100 delta tracking steps. less accuracy but more performant than unlimited esp if we are going forward with 20+ bounces
-                    for(int i = 0; i < 100; i++)
+                    else
                     {
-                        float xi = max(NextFloat(rng), 1e-6f);
-                        t += -log(xi) / majorant;
+                        volumeStart = volumeExit;
+                    }
 
-                        if (t >= tEnd)
-                        break;
+                    #if OVERRIDE_END_FOG_SCATTERING
+                        sigmaS3 = END_FOG_SCATTERING_COLOR * END_FOG_SCATTERING_INTENSITY;
+                    #else
+                        sigmaS3 = getScattering();
+                    #endif
+                    sigmaT3 =
+                    inEnd ?
+                    getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY :
+                    g_view.cameraIsUnderWater ? getMediaExtinction(MEDIA_TYPE_AIR).rgb : getMediaPrimaryExtinction();
 
-                        float3 candidatePos =
-                        rayState.rayDesc.Origin +
-                        rayState.rayDesc.Direction * t;
-                        
-                        densityModifier = calcDensityModifier(candidatePos);
+                    sigmaT3 = lerp(
+                    sigmaT3,
+                    float3(0.0125, 0.0125, 0.0125),
+                    getBiomeAdjustedRainLevel());
+                }
 
-                        float3 localSigmaT3 = sigmaT3 * densityModifier;
-                        float localSigmaT =
-                        max(localSigmaT3.x, max(localSigmaT3.y, localSigmaT3.z));
+                float tEnd = min(surface, volumeExit);
+                // Construct the homogenous medium
+                // https://la.disneyresearch.com/wp-content/uploads/Monte-Carlo-Methods-for-Volumetric-Light-Transport-Simulation-Paper.pdf
+                // Construct the homogenous medium
 
-                        if (NextFloat(rng) < localSigmaT / majorant)
+                // Majorant for delta tracking.
+                float medium = tEnd;
+                float densityModifier = 0.0f;
+                bool mediumScattered = false;
+                float3 waterSegmentWeight = 1.0;
+                bool samplePrimaryFogDirect = false;
+
+                #if !WHITE_FURNACE
+                    #if ENABLE_RAY_RECONSTRUCTION && RR_FOG_DIRECT_SAMPLING
+                    samplePrimaryFogDirect = g_rrActive && i == 0 && !rayState.hitWater && volumeStart < tEnd;
+                    if (samplePrimaryFogDirect)
+                    {
+                        float3 volumeOrigin = rayState.rayDesc.Origin + rayState.rayDesc.Direction * volumeStart;
+                        float segmentLength = tEnd - volumeStart;
+                        float extinction = max(0.0f, max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z)));
+                        float opticalDepth = extinction * IntegrateHeightDensity(
+                            volumeOrigin, rayState.rayDesc.Direction, 0.0f, segmentLength);
+                        float scatterProbability = saturate(1.0f - exp(-opticalDepth));
+                        if (scatterProbability > 0.0f)
                         {
-                            medium = t;
-                            mediumScattered = true;
-                            rayState.scattered = true;
-                            break;
+                            PathRNG directRng;
+                            directRng.state = PCG_Hash(uint3(baseSeed ^ 0xD1B54A35u, g_view.frameCount, 0x94D049BBu));
+                            float distance = SampleHeightFogDistance(volumeOrigin, rayState.rayDesc.Direction,
+                                segmentLength, extinction, NextFloat(directRng) * scatterProbability);
+                            if (distance <= segmentLength)
+                            {
+                                float3 position = volumeOrigin + rayState.rayDesc.Direction * distance;
+                                float density = calcDensityModifier(position);
+                                float3 sigmaT = sigmaT3 * density;
+                                float3 scatterWeight = sigmaS3 * density / max(sigmaT, 1e-6f);
+                                rayState.color += rayState.throughput * scatterProbability * scatterWeight *
+                                    SampleFogDirectRadiance(position, rayState.rayDesc.Direction, mainLightDir,
+                                        waterDropletSize, sigmaT, false, directRng);
+                            }
                         }
                     }
-                }
-            #endif
-            rayState.throughput *= waterSegmentWeight;
-            
-            float3 totalScatter = 0.0;
-
-            if (mediumScattered)
-            {
-                float3 scatterPos =
-                rayState.rayDesc.Origin +
-                rayState.rayDesc.Direction * medium;
-
-                float3 sigmaS =
-                sigmaS3 * densityModifier;
-
-                float3 sigmaT =
-                sigmaT3 * densityModifier;
-
-                float3 scatterWeight = rayState.hitWater ? 1.0.xxx : sigmaS / max(sigmaT, 1e-6);
-
-                float sunRadius = inEnd ? END_SUN_RADIUS : SUN_RADIUS;
-                
-                float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0));
-                float sunEv = 0.3 * exp2(sunColor.a * SUN_INTENSITY);
-                DirectLight light = sampleVolumetricDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, scatterPos, rayState.rayDesc.Direction, rng, rayState.hitWater, false, sigmaT);
-
-                float VdotL = dot(rayState.rayDesc.Direction, light.direction);
-                float gHG, gD, alpha, draineWeight;
-                GetApproximateMieParameters(waterDropletSize, gHG, gD, alpha, draineWeight);
-                
-
-                float cosThetaSun = VdotL;
-
-                float sunPhase = PhaseApproximateMie(cosThetaSun, gHG, gD, alpha, draineWeight);
-
-                float3 directScatter = rayState.throughput * scatterWeight * (light.radiance * sunPhase);
-                
-                rayState.color += directScatter;
-                float phasePdf;
-                float cosTheta;
-                float3 nextDirection = SampleApproximateMie(rayState.rayDesc.Direction,gHG,gD,alpha,draineWeight,rng,phasePdf, cosTheta);
-                float sampledPhase = PhaseApproximateMie(cosTheta,gHG,gD,alpha,draineWeight);
-
-                rayState.throughput *= scatterWeight *
-                ((sampledPhase) / max(phasePdf, 1e-6));
-
-                rayState.rayDesc.Direction = nextDirection;
-                rayState.rayDesc.Origin =
-                offset_ray(scatterPos, rayState.rayDesc.Direction);
-                
-
-
-            }
-            else
-            {
-                if (hitSurface)
-                {
-                    HitInfo hitInfo = GetCommittedHitInfo(q);
-
-                    RenderVanilla(
-                    hitInfo,
-                    rayState,
-                    rng,
-                    totalRadiance,
-                    directLight,
-                    rayColor,
-                    fogDistance,
-                    i, rayDesc);
-                    if (i == 0)
+                    #endif
+                    if (rayState.hitWater && volumeStart < tEnd)
                     {
-                        primaryDistance = min(hitInfo.rayT, maxDistance);
-                        primaryMotion = rayState.motion;
+                        uint channel = min((uint)(NextFloat(rng) * 3.0f), 2u);
+                        float sampledSigmaT = sigmaT3[channel];
+                        float segmentLength = tEnd - volumeStart;
+                        float distance = sampledSigmaT > 0.0f
+                            ? -log(max(1.0f - NextFloat(rng), 1e-7f)) / sampledSigmaT
+                            : segmentLength;
+                        mediumScattered = distance < segmentLength;
+                        float traveled = mediumScattered ? distance : segmentLength;
+                        float3 transmittance = exp(-sigmaT3 * traveled);
+                        float3 distanceDensity = mediumScattered ? transmittance * sigmaT3 : transmittance;
+                        float distancePdf = (distanceDensity.x + distanceDensity.y + distanceDensity.z) / 3.0f;
+                        if (distancePdf <= 0.0f) break;
+                        waterSegmentWeight = mediumScattered
+                            ? transmittance * sigmaS3 / distancePdf
+                            : transmittance / distancePdf;
+                        if (mediumScattered)
+                        {
+                            medium = volumeStart + distance;
+                            densityModifier = 1.0f;
+                            rayState.scattered = true;
+                        }
                     }
+                    else if (volumeStart < tEnd)
+                    {
+                        float majorant = max(sigmaT3.x, max(sigmaT3.y, sigmaT3.z));
+                        majorant = max(majorant, 1e-6f);
+
+                        float t = volumeStart;
+                        // limit to 100 delta tracking steps. less accuracy but more performant than unlimited esp if we are going forward with 20+ bounces
+                        for(int step = 0; step < 100; step++)
+                        {
+                            float xi = max(NextFloat(rng), 1e-6f);
+                            t += -log(xi) / majorant;
+
+                            if (t >= tEnd)
+                            break;
+
+                            float3 candidatePos =
+                            rayState.rayDesc.Origin +
+                            rayState.rayDesc.Direction * t;
+                        
+                            densityModifier = calcDensityModifier(candidatePos);
+
+                            float3 localSigmaT3 = sigmaT3 * densityModifier;
+                            float localSigmaT =
+                            max(localSigmaT3.x, max(localSigmaT3.y, localSigmaT3.z));
+
+                            if (NextFloat(rng) < localSigmaT / majorant)
+                            {
+                                medium = t;
+                                mediumScattered = true;
+                                rayState.scattered = true;
+                                break;
+                            }
+                        }
+                    }
+                #endif
+                rayState.throughput *= waterSegmentWeight;
+            
+                float3 totalScatter = 0.0;
+
+                if (mediumScattered)
+                {
+                    #if ENABLE_RAY_RECONSTRUCTION && RR_FOG_BACKGROUND_MOTION
+                    if (g_rrActive && i == 0 && hitSurface)
+                    {
+                        HitInfo backgroundHit = GetCommittedHitInfo(q);
+                        rrDescribeFoggedPrimarySurface(backgroundHit, rayDesc.Direction, primaryDistance, primaryMotion);
+                    }
+                    #endif
+
+                    float3 scatterPos =
+                    rayState.rayDesc.Origin +
+                    rayState.rayDesc.Direction * medium;
+
+                    float3 sigmaS =
+                    sigmaS3 * densityModifier;
+
+                    float3 sigmaT =
+                    sigmaT3 * densityModifier;
+
+                    float3 scatterWeight = rayState.hitWater ? 1.0.xxx : sigmaS / max(sigmaT, 1e-6);
+
+                    float gHG, gD, alpha, draineWeight;
+                    GetApproximateMieParameters(waterDropletSize, gHG, gD, alpha, draineWeight);
+                    if (!samplePrimaryFogDirect)
+                    {
+                        rayState.color += rayState.throughput * scatterWeight *
+                            SampleFogDirectRadiance(scatterPos, rayState.rayDesc.Direction, mainLightDir,
+                                waterDropletSize, sigmaT, rayState.hitWater, rng);
+                    }
+                    float phasePdf;
+                    float cosTheta;
+                    float3 nextDirection = SampleApproximateMie(rayState.rayDesc.Direction,gHG,gD,alpha,draineWeight,rng,phasePdf, cosTheta);
+                    float sampledPhase = PhaseApproximateMie(cosTheta,gHG,gD,alpha,draineWeight);
+
+                    rayState.lobeRoughness = 1.0;
+                    // disable fog bounces for now
+                    /*
+                    rayState.throughput *= scatterWeight *
+                    ((sampledPhase) / max(phasePdf, 1e-6));
+
+                    rayState.rayDesc.Direction = nextDirection;
+              
+                    rayState.rayDesc.Origin =
+                    offset_ray(scatterPos, rayState.rayDesc.Direction);
+                    */
+
+
                 }
                 else
                 {
-                    RenderSky(rayState, rayDesc, rng, i == 0);
-                    break;
+                    if (hitSurface)
+                    {
+                        HitInfo hitInfo = GetCommittedHitInfo(q);
+
+                        RenderVanilla(
+                        hitInfo,
+                        rayState,
+                        rng,
+                        totalRadiance,
+                        directLight,
+                        rayColor,
+                        fogDistance,
+                        i, rayDesc);
+                        if (i == 0)
+                        {
+                            primaryDistance = clamp(hitInfo.rayT + rayState.primaryParallaxOffset, 0.0f, maxDistance);
+                            primaryMotion = rayState.motion;
+                        }
+                    }
+                    else
+                    {
+                        RenderSky(rayState, rayDesc, rng, i == 0, i);
+                        break;
+                    }
                 }
             }
+
+             rrNoteBounceLobe(i, rayState.lobeRoughness, rayState.rayDesc.Origin, rayState.inSSSMedium); // DLSS Ray Reconstruction: hit distances (RayReconstruction.hlsl)
             
             
+            // Russian Roullete
             if (i > 1)
             {
                 float p = max(max(rayState.throughput.x, rayState.throughput.y), rayState.throughput.z);

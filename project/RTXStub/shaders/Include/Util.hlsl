@@ -182,6 +182,16 @@ float2 computeMotionVector(float3 steveSpacePositon, float3 steveSpaceMotion) {
     return (prevNdcPos - ndcPos) * float2(0.5, -0.5); // Offset in UV space.
 }
 
+static const uint kWaterHistorySlot = 277;
+
+float4 getPreviousWaterFrame() {
+    float4 history = inputIncidentLight[kWaterHistorySlot];
+    if (history.w != float((g_view.frameCount - 1u) & 65535u) ||
+        !all(isfinite(history.xyz)) || history.x > g_view.time)
+        return float4(g_view.time, g_view.waveWorksOriginInSteveSpace.xz, 0.0f);
+    return history;
+}
+
 float3 rayDirFromNDC(float2 ndc) {
     // Note: as far as I can tell, view origin is always 0, hence it's not necessary to subtract it or even 
     // divide resulting vector by W. But I'm keeping the code here in case view origin becomes something else in the future.
@@ -255,6 +265,16 @@ float4 unpackObjectInstanceTintColor(uint packedColor) {
         (packedColor >> 8 * 1) & 0xff, 
         (packedColor >> 8 * 0) & 0xff
     ) / 255.0;
+}
+
+float4 expandPackedColour(uint32_t packed)
+{
+	return float4(
+		(float)((packed >> 24)) * (1.f / 255.f),
+		(float)((packed >> 16) & 0xff) * (1.f / 255.f),
+		(float)((packed >> 8) & 0xff) * (1.f / 255.f),
+		(float)((packed >> 0) & 0xff) * (1.f / 255.f)
+		);
 }
 
 float3 linearToRec2020(float3 color)

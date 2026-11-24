@@ -21,7 +21,7 @@ $input v_texcoord0
 #include "../../RTXStub/shaders/Include/Settings.hlsl"
 // Bloom strength
 
-#define BLOOM_MULTIPLIER 2.5
+#define BLOOM_MULTIPLIER 2.0
 
 // Approximate mesopic/scotopic color shift. These gains reduce long-wavelength
 // red sensitivity and increase blue sensitivity as scene adaptation gets darker.
