@@ -13,7 +13,7 @@
 
 #define DO_SAMPLE_LIMITS 0
 #define MAX_ACCUMULATED_SAMPLES 256
-#define MAX_BOUNCES 4
+#define MAX_BOUNCES 6
 
 // White furnace test
 #define WHITE_FURNACE 0
@@ -96,7 +96,7 @@
 #define POINT_LIGHT_SHADOW_RADIUS 0.0325
 #define EMISSION_STENGTH  5.5
 
-#define POINT_LIGHT_INTENSITY 65.0
+#define POINT_LIGHT_INTENSITY 105.0
 // Integer distances in blocks: inverse-square falloff is unchanged until the fade starts.
 #define POINT_LIGHT_FADE_START 32
 #define POINT_LIGHT_FADE_END 64
@@ -131,17 +131,17 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define RAIN_NORMAL_REDUCTION 0.45
 
 //Sun colors alpha stores intensity
-#define DAY_SUN_COLOR float4(1.0,0.7925,0.475, 1.17)
-#define NOON_SUN_COLOR float4(1.0,0.95,0.75, 1.14)
+#define DAY_SUN_COLOR float4(1.0,0.7925,0.475, 1.08)
+#define NOON_SUN_COLOR float4(1.0,0.95,0.75, 1.05)
 #define SUNRISE_SUN_COLOR float4(1.0,0.4737,0.175, 1.15)
-#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.66)
+#define MOON_COLOR float4(0.0624, 0.1196, 0.2745, 0.46)
 
 // End dimension settings
 #define ENABLE_END_SUNLIGHT 1
 #define END_SUN_COLOR float3(0.658,0.121,0.573)
 #define END_SUN_RADIUS 0.135f
 #define END_SUN_DIRECTION normalize(float3(0.85, .48, 1.515))
-#define END_SUN_INTENSITY 2.2
+#define END_SUN_INTENSITY 1.65
 #define END_SUN_DISC_SIZE 0.091f // Size of the celestiabl body in the end
 #define END_SUN_DISC_INTENSITY 100.0 // Recommended you keep this low as it can screw with indirect lighting 
 #define USE_ALTERNATE_END_SUN_DISC_COLOR 0
@@ -150,7 +150,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 #define USE_END_TWIN_SUNS 1
 #define END_TWIN_SUN_RADIUS 0.0165f
 #define END_TWIN_SUN_DIRECTION normalize(float3(-0.35, 1.68, 4.4715))
-#define END_TWIN_SUN_INTENSITY 1650
+#define END_TWIN_SUN_INTENSITY 8
 #define END_TWIN_SUN_DISC_SIZE 0.021f
 #define END_TWIN_SUN_DISC_INTENSITY 45.0
 #define END_TWIN_SUN_COLOR float3(0.458,0.521,0.973)
@@ -264,15 +264,15 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 
 
 
-#define AGX_MIN_EV -16.645
+#define AGX_MIN_EV -17.645
 #define AGX_MAX_EV 5.0
 
-#define AUTO_EXPOSURE_MIN -14.0
+#define AUTO_EXPOSURE_MIN -16.0
 #define AUTO_EXPOSURE_MAX 6.0
 
-#define EXPOSURE_MIN -1.4
-#define EXPOSURE_MAX 4.5
-#define EXPOSURE_MAX_DAY 4.5
+#define EXPOSURE_MIN -1.6
+#define EXPOSURE_MAX 5.5
+#define EXPOSURE_MAX_DAY 5.5
 #define EXPOSURE_MAX_NIGHT 4.0
 
 #define TARGET_EXPOSURE_EV 0.18
@@ -299,7 +299,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 // Glossy and diffuse bounces see the mean of the star field and no moon disc (the moon still lights
 // them through its direct light sample). Removes the glitter of metals and rough surfaces at night;
 // mirror-like surfaces keep every star. 0 = stars and moon on every bounce, as before.
-#define PREFILTER_SKY_ON_ROUGH_BOUNCES 1
+#define PREFILTER_SKY_ON_ROUGH_BOUNCES 0
 
 // DLSS Ray Reconstruction through the RTXBoost mod (see RR-SUPPORT.md).
 // Only active while RTXBoost has RR turned on, otherwise the pack renders as usual.
@@ -336,8 +336,10 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 // 2026-11 driver's RR model the picture did not change at all, not even with the distance forced to 0
 // or to "far" everywhere. Needs RTXBoost 1.5.0 or newer; older versions ignore it.
 // 0 = specular hit distance only.
-#define RR_DIFFUSE_HITDIST 1
+#define RR_DIFFUSE_HITDIST 0
 
+
+#define END_PORTAL_WORLD_SPACE                              1 
 
 
 #endif // SETTINGS_HLSL

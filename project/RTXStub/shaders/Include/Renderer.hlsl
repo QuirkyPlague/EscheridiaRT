@@ -154,7 +154,7 @@
         
         //float3 finalColor = skyScattering1(rayState.rayDesc.Direction);
         
-        float3 sunDir =  getTrueDirectionToSun();
+        float3 sunDir =  inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
         float3 moonDir = getTrueDirectionToMoon();
 
         float sunFade = saturate(sunDir.y);
@@ -164,24 +164,19 @@
 
         float4 sunColor = inEnd ? float4(END_SUN_COLOR, END_SUN_INTENSITY) : getSunColor(float4(0.xxxx));
         
-        float sunEv = 1.0 * exp2(sunColor.a * SUN_INTENSITY);
+        float sunEv = inEnd ? 1.0 * exp2( 0.03 * sunColor.a) : 1.0 * exp2(sunColor.a * SUN_INTENSITY);
         float skyLuminanceMult = inEnd ? END_RAYLEIGH_MULT : RAYLEIGH_MULT;
-        float3 sunLuminance = 0.00045 * exp2( sunColor.a * SUN_INTENSITY);
+        float3 sunLuminance = inEnd ? 0.00000045 * exp2( sunColor.a * SUN_INTENSITY) : 0.00045 * exp2( sunColor.a * SUN_INTENSITY);
         float sunStrength = luminance( sunColor.rgb * sunLuminance);
-        mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
+        mainLightDir =  sunDir;
         // The atmosphere function adds the planet radius internally; pass the
         // existing 1000-meter offset converted to kilometers.
-        float minSunIntensity = 2.448;
+        float minSunIntensity = 4.448;
 
         sunStrength = max(sunStrength, minSunIntensity); // This allows for the sun to have an effect on the sky even after sunset
         
         // Calculate nighttime indirect boost separately - only applied to indirect contribution, not sky rendering
-        float nightIndirectBoost = 1.0;
-        if(bounce > 1)
-        {
-            float nightFactor = smoothstep(0.12f, -0.08f, sunDir.y);
-            nightIndirectBoost = lerp(1.0, 35.0, nightFactor);
-        }
+        
         float3 worldPos = float3(0,500,0);
         float3 rayOriginKm = worldPos * 0.001;
 
@@ -202,8 +197,7 @@
         sunStrength,
         rng,skyDetail,isPrimaryRay);
         
-        // Apply nighttime indirect boost only to the contribution, not the sky itself
-        finalColor *= nightIndirectBoost;
+        
         
         
 
@@ -225,7 +219,7 @@
         if (isBlockBreakingOverlay) {
             // Game does some fuckery and doesnt exactly provide the correct vertex positions. Why? I have no idea
             // Constructs motion vectors off the hit positions and previous frame transforms
-        
+            
             surfaceInfo.position = rayState.rayDesc.Origin + rayState.rayDesc.Direction * hitInfo.rayT;
             surfaceInfo.prevPosition = surfaceInfo.position + g_view.previousToCurrentCameraPosWorldSpace + g_view.previousViewOriginSteveSpace - g_view.viewOriginSteveSpace;
         }
@@ -344,14 +338,14 @@
             float2 Xi = NextFloat2(rng);
             float2 XiSpec = NextFloat2(rng);
             float2 XiDiffuse = NextFloat2(rng);
-            float3 sunDir =  getDirectionToSun();
+            float3 sunDir =  inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
             float3 moonDir = -sunDir;
 
             float sunFade = saturate(sunDir.y);
             float moonFade = saturate(moonDir.y);
 
             float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
-            mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
+            mainLightDir =  mainLightDir;
             float3 endTwinSunDir = END_TWIN_SUN_DIRECTION;
             float3 direction = normalize(rayState.rayDesc.Direction);
             float3 geometryPosition = surfaceInfo.position;
@@ -472,7 +466,7 @@
             ? max((1.0f - specularProbability) * surfaceInfo.alpha, 1e-4)
             : diffuseEnergyScale;
 
-        
+            
             
 
 
@@ -484,7 +478,7 @@
                 rayColor *= surfaceInfo.color;
                 totalRadiance = 0;
                 
-     
+                
                 rayState.rayDesc.TMin = hitInfo.rayT;
                 // Update other ray properties
                 rayState.distance = saturate(hitInfo.rayT);
@@ -636,10 +630,21 @@
                 float sunRadius = inEnd ? END_SUN_RADIUS : SUN_RADIUS;
                 float4 sunColor = inEnd ? float4(END_SUN_COLOR, END_SUN_INTENSITY) : getSunColor(float4(0.0, 0.0, 0.0, 0.0));
                 float sunIntensity = inEnd ? END_SUN_INTENSITY : SUN_INTENSITY;
-                float sunEv = 1.0 * exp2(sunColor.a * sunIntensity);
-                DirectLight light = sampleDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, surfaceInfo, geometryPosition, N, ng, V, directDiffuseWeight, rng, inWater);
-                
+                float sunEv = inEnd ? 1 * exp2(3.0 * sunColor.a) : 1.0 * exp2(sunColor.a * sunIntensity);
+                DirectLight light = sampleDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, surfaceInfo, geometryPosition, N, ng, V, directDiffuseWeight, rng, inWater, false);
                 totalRadiance +=  light.radiance;
+
+                #if USE_END_TWIN_SUNS
+                    // sample the twin sun direction for the end
+                    if(inEnd)
+                    {
+                        float twinSunEV = 1.0 * exp2(END_TWIN_SUN_INTENSITY);
+                        DirectLight twinSunLight = sampleDirectLightData(END_TWIN_SUN_DIRECTION, END_TWIN_SUN_COLOR, twinSunEV, END_TWIN_SUN_RADIUS, true, surfaceInfo, geometryPosition, N, ng, V, directDiffuseWeight, rng, inWater, true);
+                        totalRadiance += twinSunLight.radiance;
+                    }
+                    
+                #endif // USE_END_TWIN_SUNS
+                
                 
                 // Apply emissive lighting.
                 // TODO, move this to surface Info later
@@ -796,9 +801,9 @@
                 rayState.motion += surfaceMotion;
             }
             
-                            // Enchantment Glint (unlit effect)
-                if (objectInstance.flags & kObjectInstanceFlagGlint)
-                totalRadiance += (sin(3.0 * g_view.time) * 0.5 + 0.5) * (float3(077, 23, 255) / 255.0);
+            // Enchantment Glint (unlit effect)
+            if (objectInstance.flags & kObjectInstanceFlagGlint)
+            totalRadiance += (sin(3.0 * g_view.time) * 0.5 + 0.5) * (float3(077, 23, 255) / 255.0);
 
             rayState.color += totalRadiance * rayState.throughput;
             rayState.throughput *= rayColor ;
@@ -811,13 +816,27 @@
     float dropletSize, float3 sigmaT, bool hitWater, PathRNG rng)
     {
         float sunRadius = inEnd ? END_SUN_RADIUS : SUN_RADIUS;
-        float4 sunColor = getSunColor(float4(0.0, 0.0, 0.0, 0.0));
-        float sunEv = 0.3 * exp2(sunColor.a * SUN_INTENSITY);
+        float4 sunColor = inEnd ? float4(END_SUN_COLOR, END_SUN_INTENSITY) : getSunColor(float4(0.0, 0.0, 0.0, 0.0));
+        float sunEv = inEnd ? 16.3 * exp2(sunColor.a) : 0.3 * exp2(sunColor.a * SUN_INTENSITY);
         DirectLight light = sampleVolumetricDirectLightData(lightDirection, sunColor.rgb, sunEv,
-        sunRadius, true, position, direction, rng, hitWater, false, sigmaT);
+        sunRadius, true, position, direction, rng, hitWater, false, sigmaT, false);
+
+
         float gHG, gD, alpha, draineWeight;
-        GetApproximateMieParameters(dropletSize, gHG, gD, alpha, draineWeight);
-        return light.radiance * PhaseApproximateMie(dot(direction, light.direction), gHG, gD, alpha, draineWeight);
+        GetApproximateMieParameters(5, gHG, gD, alpha, draineWeight);
+        float3 twinSunRadiance = 0.0;
+        #if USE_END_TWIN_SUNS
+        if (inEnd)
+        {
+            float4 twinSunColor = float4(END_TWIN_SUN_COLOR, END_TWIN_SUN_INTENSITY);
+            float twinSunEv = 16.3 * exp2(twinSunColor.a);
+            DirectLight twinSunLight = sampleVolumetricDirectLightData(END_TWIN_SUN_DIRECTION, twinSunColor.rgb, twinSunEv,
+            END_TWIN_SUN_RADIUS, true, position, direction, rng, hitWater, false, sigmaT, true);
+            twinSunRadiance = twinSunLight.radiance * PhaseApproximateMie(dot(direction, twinSunLight.direction), gHG, gD, alpha, draineWeight);
+        }
+        #endif
+
+        return light.radiance * PhaseApproximateMie(dot(direction, light.direction), gHG, gD, alpha, draineWeight) + twinSunRadiance;
     }
 
     float3 RenderRay(RayDesc rayDesc, out float outputDistance, out float3 outputMotion, in float2 pixelPos, inout float firstHitDist)
@@ -837,14 +856,14 @@
         float primaryDistance = maxDistance;
         float3 primaryMotion = 0.0;
 
-        float3 sunDir =  getDirectionToSun();
+        float3 sunDir =  inEnd ? END_SUN_DIRECTION : getTrueDirectionToSun();
         float3 moonDir = -sunDir;
 
         float sunFade = saturate(sunDir.y);
         float moonFade = saturate(moonDir.y);
 
         float3 mainLightDir = sunFade > 0.0 ? sunDir : moonDir;
-        mainLightDir = inEnd ? END_SUN_DIRECTION : mainLightDir;
+        mainLightDir = mainLightDir;
         float3 endTwinSunDir = END_TWIN_SUN_DIRECTION;
 
         for (int i = 0; i < MAX_BOUNCES; i++)
@@ -983,7 +1002,7 @@
                     float4 sunColor = inEnd ? float4(END_SUN_COLOR, END_SUN_INTENSITY) : getSunColor(float4(0.0, 0.0, 0.0, 0.0));
                     float sunIntensity = inEnd ? END_SUN_INTENSITY : SUN_INTENSITY;
                     float sunEv = exp2(sunColor.a * sunIntensity);
-                    DirectLight exitLight = sampleVolumetricDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, exitPos, exitNormal, rng, rayState.hitWater, false, 0.0);
+                    DirectLight exitLight = sampleVolumetricDirectLightData(mainLightDir, sunColor.rgb, sunEv, sunRadius, true, exitPos, exitNormal, rng, rayState.hitWater, false, 0.0, false);
                     rayState.color += rayState.throughput * exitLight.radiance * (max(dot(exitNormal, exitLight.direction), 0.0) / PI);
                     rayState.inSSSMedium = false;
                     rayState.sssMediumThickness = 0.0;
@@ -1033,7 +1052,7 @@
                     #endif
                     sigmaT3 =
                     inEnd ?
-                    getMediaPrimaryExtinction() * END_FOG_EXTINCTION_INTENSITY :
+                    getMediaPrimaryExtinction() :
                     g_view.cameraIsUnderWater ? getMediaExtinction(MEDIA_TYPE_AIR).rgb : getMediaPrimaryExtinction();
 
                     sigmaT3 = lerp(
@@ -1184,7 +1203,7 @@
 
                     rayState.lobeRoughness = 1.0;
                     // disable fog bounces for now
-                    /*
+                    
                     rayState.throughput *= scatterWeight *
                     ((sampledPhase) / max(phasePdf, 1e-6));
 
@@ -1192,7 +1211,7 @@
                     
                     rayState.rayDesc.Origin =
                     offset_ray(scatterPos, rayState.rayDesc.Direction);
-                    */
+                    
 
 
                 }

@@ -90,149 +90,8 @@
         return sunColor;
     }
 
-    float3 skyCompute(float3 pos) {
-        float3 dir = pos;
 
-        float3 sunDir = getTrueDirectionToSun();
-
-        float VoL = dot(dir, sunDir);
-
-        float upPos = saturate(dir.y);
-        float downPos = clamp(dir.y, -1.0, 0.0);
-        float negatedDownPos = -1.0 * downPos;
-        float midPos = upPos + negatedDownPos;
-        float negatedMidPos = 1.0 - midPos;
-        //rain
-        const float3 rainZenCol = float3(0.2902, 0.3608, 0.4784) * 0.25;
-        const float3 rainHorCol = float3(0.7059, 0.7569, 0.7961) * 0.25;
-        const float3 rainGrndCol = float3(0.1569, 0.1922, 0.2314) * 0.25;
-
-        const int keys = 10;
-
-        const float3 colors[7] = {
-            NOON_SKY_COL,
-            DAY_SKY_COL,
-            DAY_SKY_COL,
-            SUNRISE_SKY_COL,
-            SUNSET_SKY_COL * 0.06,
-            SUNSET_SKY_COL * 0.025,
-            NIGHT_SKY_COL * NIGHT_INTENSITY
-        };
-        const float times[7] = {
-            0.0000000000, // 6000
-            0.1920399368, // 3000
-            0.3466664553, // 1000
-            0.4309642911, // 0
-            0.4746705294, // 23500
-            0.5193186402, // 23000
-            0.5621
-        };
-
-        const float3 horizonColors[7] = {
-            NOON_HORIZON_COL,
-            DAY_HORIZON_COL * 1.4,
-            DAY_HORIZON_COL * 1.4,
-            SUNRISE_HORIZON_COL * 1.15,
-            SUNSET_HORIZON_COL * 0.1,
-            SUNSET_HORIZON_COL * 0.025,
-            NIGHT_HORIZON_COL * NIGHT_INTENSITY
-        };
-        const float3 groundColors[7] = {
-            NOON_GROUND_COL,
-            DAY_GROUND_COL,
-            DAY_GROUND_COL,
-            SUNRISE_GROUND_COL,
-            SUNSET_GROUND_COL * 0.1,
-            SUNSET_GROUND_COL * 0.01,
-            NIGHT_GROUND_COL * NIGHT_INTENSITY
-        };
-
-        float time = getTime();
-
-        float timediff = clamp(abs(g_view.skyTextureW - 0.51952102785), 0, 0.00879302615);
-        timediff *= 1.0 / 0.00879302615;
-        float3 zenithCol = NIGHT_SKY_COL * NIGHT_INTENSITY;
-        float3 horizonCol = NIGHT_HORIZON_COL * NIGHT_INTENSITY;
-        float3 groundCol = NIGHT_GROUND_COL * NIGHT_INTENSITY;
-        float mieScale = 0.0;
-        float3 mieScat = float3(0.0,0.0,0.0);
-        float dawnDuskMieFactor = 0.0;
-        float dawnDuskTimeFactor = 0.0;
-        float rainIntensityShift = 0.01;
-
-        [unroll] for (int i = 1; i < 7; i++) {
-            if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i]) {
-                float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
-
-                zenithCol = lerp(colors[i - 1], colors[i], w);
-                horizonCol = lerp(horizonColors[i - 1], horizonColors[i], w);
-                groundCol = lerp(groundColors[i - 1], groundColors[i], w);
-
-                break;
-            }
-        }
-
-        
-
-
-        float zenithBlend = saturate(pow(upPos, ZENITH_BLEND));
-        float horizonBlend = saturate(pow(negatedMidPos, HORIZON_BLEND));
-        float groundBlend = saturate(pow(negatedDownPos, GROUND_BLEND));
-
-        zenithCol *=  zenithBlend;
-        horizonCol *=  horizonBlend;
-        groundCol *= groundBlend;
-
-        float3 sky = zenithCol + horizonCol + groundCol;
-
-        float3 color = sky;
-        float skyLuminance = dot(color, 1.0);
-        color = pow(color, 1.5);
-        color *= skyLuminance / dot(color, 1.0);
-        return color;
-    }
-
-    float3 getSkyColor(float3 color) {
-        const float3 colors[7] = {
-            NOON_SKY_COL,
-            DAY_SKY_COL,
-            DAY_SKY_COL,
-            SUNRISE_SKY_COL,
-            SUNSET_SKY_COL * 0.06,
-            SUNSET_SKY_COL * 0.025,
-            NIGHT_SKY_COL * NIGHT_INTENSITY
-        };
-        const float times[7] = {
-            0.0000000000, // 6000
-            0.1920399368, // 3000
-            0.3466664553, // 1000
-            0.4309642911, // 0
-            0.4746705294, // 23500
-            0.5193186402, // 23000
-            0.5621
-        };
-
-        float time = getTime();
-
-        float timediff = clamp(abs(g_view.skyTextureW - 0.51952102785), 0, 0.00879302615);
-        timediff *= 1.0 / 0.00879302615;
-        float3 zenithCol = NIGHT_SKY_COL * NIGHT_INTENSITY;
-
-        [unroll] for (int i = 1; i < 7; i++) {
-            if (g_view.skyTextureW >= times[i - 1] && g_view.skyTextureW < times[i]) {
-                float w = (g_view.skyTextureW - times[i - 1]) / (times[i] - times[i - 1]);
-
-                zenithCol = lerp(colors[i - 1], colors[i], w);
-                break;
-            }
-        }
-
-        color = zenithCol;
-        float skyLuminance = dot(color, 1.0);
-        color = pow(color, 1.5);
-        color *= skyLuminance / dot(color, 1.0);
-        return color;
-    }
+    
 
     // moonDetail: 1 = the moon disc, 0 = none (the bounce sees the moon only through its direct light sample).
     float3 getSun(float3 dir, bool drawSunDisc, float moonDetail) {
@@ -381,11 +240,11 @@
     static const float  ATM_RADIUS_KM   = 6420.0f;
     static const float  EARTH_RADIUS = EARTH_RADIUS_KM;
     static const float  ATM_RADIUS   = ATM_RADIUS_KM;
-    static const float  H_RAYLEIGH   =  inEnd ? 24.55f : 8.0f;
+    static const float  H_RAYLEIGH   =  inEnd ? 20.55f : 8.0f;
     static const float  H_MIE        = inEnd ? 1.7f : 1.2f;
 
     static const float3 BETA_RAYLEIGH = float3(4.202f, 12.558f, 29.100f) * 1e-3f;
-    static const float3 END_RAYLEIGH = float3(2.32f, 0.26f, 13.56f) * 1e-3f;
+    static const float3 END_RAYLEIGH = float3(5.32f, 1.26f, 28.56f) * 1e-3f;
     static const float3 RAIN_RAYLEIGH = float3(33.202f, 33.558f, 33.900f) * 1e-3f;
 
     static const float  BETA_MIE_S    = 45.996f * 1e-3f;
@@ -393,7 +252,7 @@
 
     // Ozone absorption (Chappuis band) - keep the same color tint and scale as the older
     // tuned values, but in the analytic km-based model.
-    static const float3 BETA_OZONE_ABSORPTION =  inEnd ? float3(0.0003839,0.009648, 0.000208) : float3(0.001854,0.001648, 0.000138);
+    static const float3 BETA_OZONE_ABSORPTION = float3(0.001854,0.001648, 0.000138);
 
 
     // [PRE99], see also https://www.desmos.com/calculator/giz0uiar7k
@@ -525,7 +384,7 @@
         return e / (2.0 * PI * (e * (1.0 - cosTheta) + 1.0) * log(2.0 * e + 1.0));
     }
 
-    float3 ProceduralStars(float3 rayDir, float nightFactor)
+    float3 ProceduralStars(float3 rayDir, float nightFactor, bool isPrimaryRay = true)
     {
         if (rayDir.y <= 0.0f || nightFactor <= 0.0f) return 0.0f;
 
@@ -546,6 +405,11 @@
         float size = lerp(0.0072f, 0.055f, HashToFloat(PCG_Hash(uint3(seed, 0x55u, 0x91u))));
         float star = 1.0f - smoothstep(size * 0.3f, size, distanceFromStar);
         float brightness = lerp(0.15f, 1.6f, HashToFloat(PCG_Hash(uint3(seed, 0xA1u, 0xC7u))));
+        
+        // Boost star brightness for primary rays to prevent RR denoiser from filtering them as noise
+        if (isPrimaryRay)
+            brightness *= 2.5f;
+        
         float colorMix = HashToFloat(PCG_Hash(uint3(seed, 0xD3u, 0xE9u)));
         float3 starColor = colorMix < 0.5f? lerp(float3(1.0f, 0.78f, 0.58f), float3(1.0f, 0.95f, 0.82f), colorMix * 2.0f) : lerp(float3(1.0f, 0.95f, 0.82f), float3(0.68f, 0.78f, 1.0f), (colorMix - 0.5f) * 2.0f);
 
@@ -646,7 +510,7 @@
                 float3 safeExtinction = max(extinction, float3(1e-4f, 1e-4f, 1e-4f));
                 float3 integScattering = (stepLuminance - stepLuminance * stepTransmittance) / safeExtinction;
                 totalLuminance += throughput * integScattering;
-                totalLuminance = inEnd ? lerp(totalLuminance, endSkyColor(rayDir) * ORIGINAL_END_SKY_INTENSITY, 0.0085)  : totalLuminance;
+                totalLuminance =  totalLuminance;
                 throughput *= stepTransmittance;
             }
             
@@ -657,7 +521,7 @@
             // skyDetail: 1 = every star, 0 = the star field's mean (rough bounces, see RenderSky).
             {
                 float nightFactor = smoothstep(0.12f, -0.08f, sunDir.y);
-                float3 stars = skyDetail > 0.0f ? ProceduralStars(rayDir, nightFactor) : 0.0f;
+                float3 stars = skyDetail > 0.0f ? ProceduralStars(rayDir, nightFactor, drawSunDisc) : 0.0f;
                 totalLuminance += lerp(MeanStarRadiance(rayDir, nightFactor), stars, skyDetail);
             }
 

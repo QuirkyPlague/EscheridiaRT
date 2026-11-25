@@ -27,7 +27,7 @@
         }
     };
 
-    DirectLight sampleDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in SurfaceInfo surface, in float3 shadowPosition, float3 N, in float3 geoNormal, in float3 viewDirection, in float3 diffuseWeight, in PathRNG rng, in bool hitWater)
+    DirectLight sampleDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in SurfaceInfo surface, in float3 shadowPosition, float3 N, in float3 geoNormal, in float3 viewDirection, in float3 diffuseWeight, in PathRNG rng, in bool hitWater, in bool isTwinSun)
     {
         DirectLight light;
         light.setUp(direction, color, intensity, radius, isActive);
@@ -103,20 +103,22 @@
 
         float D = D_GGX(NdotH, surface.roughness * surface.roughness);
         float G = G_Smith(NdotV, NdotL, surface.roughness); 
-         float3 fogExtinction = GetAtmosphereSunTransmittance(surface.position, ray.Direction, hitWater);
+        float3 fogExtinction = 1.0;
+        if (!isTwinSun)  fogExtinction = GetAtmosphereSunTransmittance(surface.position, ray.Direction, hitWater);
+        
 
         float3 specularBRDF = (fresnelSchlick(VdotH, F0) * D * G) / (4.0 * NdotV * NdotL);
         float shadingNormalCorrection = ShadingNormalCorrectionRadiance(L, V, Ng, N);
         float3 BRDF = ((diffuseBRDF) + specularBRDF);
 
-        float pdfSun = max(PDF_SunCone(), 1e-4);
+        float pdfSun = max(PDF_SunCone(isTwinSun), 1e-4);
        
         light.color *= light.intensity;
         light.radiance += light.color  * BRDF * NdotL * light.shadowTransmittance * fogExtinction / pdfSun; 
         return light;
     }
 
-    DirectLight sampleVolumetricDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in float3 position, in float3 rayDir, in PathRNG rng, in bool hitWater, in bool isSSSMedium, in float3 sigmaT)
+    DirectLight sampleVolumetricDirectLightData(in float3 direction, in float3 color, in float intensity, in float radius, in bool isActive, in float3 position, in float3 rayDir, in PathRNG rng, in bool hitWater, in bool isSSSMedium, in float3 sigmaT, bool isTwinSun)
     {
         DirectLight light;
         light.setUp(direction, color, intensity, radius, isActive);
@@ -138,7 +140,7 @@
         }
         light.shadowTransmittance = payload.transmission;
 
-        float pdfSun = max(PDF_SunCone(), 1e-4);
+        float pdfSun = max(PDF_SunCone(isTwinSun), 1e-4);
         float3 fogExtinction = GetAtmosphereSunTransmittance(position, ray.Direction, hitWater);
         light.direction = ray.Direction;
         light.color *= light.intensity;

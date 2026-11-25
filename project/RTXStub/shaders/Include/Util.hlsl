@@ -304,6 +304,20 @@ float2 unpackVertexUV(uint packedUV, bool packedUvIncludesBias = false) {
     }
 }
 
+// PERFORMANCE NOTE: This function issues a bindless GetDimensions (descriptor fetch + resinfo)
+// per primary ray. Consider baking an 'is end portal' bit into ObjectInstance.flags if a flag
+// bit becomes available, or cache the comparison against a known texture index.
+bool isEndPortal(ObjectInstance objectInstance) {
+    bool isBlock = objectInstance.flags & kObjectInstanceFlagChunk;
+
+    uint2 textureSize;
+    textures[objectInstance.colourTextureIdx].GetDimensions(textureSize.x, textureSize.y);
+
+    // This works since all block textures are atlassed
+    // onto the same texture except the end portal
+    return isBlock && all(textureSize == 256u.xx);
+}
+
 // Determine whether g_view.directionToSun is actually direction to moon.
 bool isMoonPrimaryLight() {
     if (abs(g_view.directionToSun.y) > 0.999) return g_view.skyTextureW > 0.9;
@@ -430,9 +444,10 @@ float ShadingNormalCorrectionRadiance(float3 wi, float3 wo, float3 Ng, float3 Ns
     return min(correction, 4.0);
 }
 
-float PDF_SunCone()
+float PDF_SunCone(bool isTwinSun)
 {
-    float cosThetaMax = cos(inEnd ? END_SUN_RADIUS : SUN_RADIUS);
+    
+    float cosThetaMax = cos(isTwinSun ? END_TWIN_SUN_RADIUS : (inEnd ? END_SUN_RADIUS : SUN_RADIUS));
 
     return 1.0 /
         (2.0 * PI * (1.0 - cosThetaMax));

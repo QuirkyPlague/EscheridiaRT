@@ -402,6 +402,7 @@
         bool isBanner = objectInstance.flags & kObjectInstanceFlagTextureAlphaControlsVertexColor && hitInfo.materialType == MATERIAL_TYPE_OPAQUE;
 
         Texture2D colorTex = textures[objectInstance.colourTextureIdx != 0xffff ? objectInstance.colourTextureIdx : g_view.missingTextureIndex];
+        Texture2D atlas = textures[objectInstance.colourTextureIdx];
         if (objectInstance.colourTextureIdx != 0xffff)
         {
             // Banner UV fix
@@ -441,6 +442,10 @@
             // in vanilla graphics so here we only apply it to banners.
             vertColor.rgb = lerp(vertColor.rgb, 1.xxx, color.a);
         }
+
+         float emissive = 0.0;
+
+     
 
         // Filled maps in first person or in item frames should also be treated as having 0.5 treshold, so we check for them here, with `!objectInstance.flags`.
         surfaceInfo.shouldDiscard = hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST 
@@ -495,8 +500,8 @@
             EvaluateActorMaterial(objectInstance, hitInfo, uv, tintColor0, tintColor1, color, surfaceInfo.shouldDiscard);
         }
         if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND)
-            surfaceInfo.shouldDiscard = discardAlphaBlend;
-        float emissive = 0.0;
+        surfaceInfo.shouldDiscard = discardAlphaBlend;
+       
         // Filter for entity_alphatest materials
         if (!(objectInstance.flags & kObjectInstanceFlagChunk) &&
         objectInstance.objectCategory != MATERIAL_TYPE_ALPHA_BLEND &&
@@ -550,10 +555,83 @@
             surfaceInfo.subsurface = mers.a;
             surfaceInfo.subsurface = mers.r > mers.a ? 0.0 : mers.a;
 
-            // Skip PBR normal calculations for block breaking overlays to avoid NaN issues with degenerate geometry
-            const bool isBlockBreakingOverlay = objectInstance.flags == (kObjectInstanceFlagAlphaTestThresholdHalf | kObjectInstanceFlagTextureAlphaControlsVertexColor);
+            // Fix the end portal material
+            // By default the portal renders as a black surface
+            // The original functionality needs to be recreated
+            // Thanks Sleepi
             
-            if (!isBlockBreakingOverlay && (pbr.flags & (kPBRTextureDataFlagHasNormalTexture | kPBRTextureDataFlagHasHeightMapTexture | kPBRTextureDataFlagHasPackedHeightNormalsTexture)))
+            if (isEndPortal(objectInstance))
+            {
+                emissive = 0.0;
+
+                // Colors of the portal layers
+                static const float3 COLORS[16] = {
+                    float3(0.423529, 0.829411, 0.923529),
+                    float3(0.411765, 0.800000, 0.623529),
+                    float3(0.290196, 0.419608, 0.835294),
+                    float3(0.145098, 0.768627, 0.721569),
+                    float3(0.588235, 0.560784, 0.721569),
+                    float3(0.478431, 0.858824, 0.654902),
+                    float3(0.564706, 0.858824, 0.847059),
+                    float3(0.243137, 0.866667, 0.545098),
+                    float3(0.125490, 0.545098, 0.521569),
+                    float3(0.521569, 0.517647, 0.713725),
+                    float3(0.411765, 0.549020, 0.517647),
+                    float3(0.164706, 0.705882, 0.709804),
+                    float3(0.231373, 0.796078, 0.658824),
+                    float3(0.168627, 0.545098, 0.847059),
+                    float3(0.325490, 0.721569, 0.517647),
+                    float3(0.282353, 0.552941, 0.615686)
+                };
+
+                float3 portalColour = float3(0, 0, 0);
+                float3 rayDir = normalize(surfaceInfo.position - g_view.viewOriginSteveSpace);
+
+                // Axis-aligned TBN basis
+                float3 normal = surfaceInfo.normal;
+                float3 tangent = abs(normal.y) > 0.95f ? float3(0, 0, 1) :
+                normalize(cross(normal, float3(0, 1, 0)));
+                float3 bitanget = cross(tangent, normal);
+
+                for (int layer = 0; layer < 16; layer++)
+                {
+                    #if END_PORTAL_WORLD_SPACE
+                        // World space portal
+                        float3 worldPos = surfaceInfo.position - g_view.waveWorksOriginInSteveSpace + (-1 / dot(rayDir, normal)) * rayDir * (layer + 1) * 0.8;
+                    #else
+                        // Local space portal
+                        float3 worldPos = surfaceInfo.position + (-1 / dot(rayDir, normal)) * rayDir * (layer + 1) * 0.8;
+                    #endif
+
+                    float2 uv;
+                    uv.x = dot(worldPos, tangent);
+                    uv.y = dot(worldPos, bitanget);
+
+                    float rotation = layer * layer;
+                    float sinr, cosr;
+                    sincos(rotation, sinr, cosr);
+                    uv = float2(uv.x * cosr - uv.y * sinr,
+                    uv.x * sinr + uv.y * cosr);
+
+                    uv.y += g_view.time * 0.1; // Scrolling texture
+                    float scale = 22.5 / (0.125 * layer + 1.0);
+                    uv = frac(uv / scale);
+
+                    float4 sample = colorTex.SampleLevel(pointSampler, uv, 0);
+                    portalColour += SRGBToLinear(sample.rgb) * COLORS[layer] / (0.125 * layer * layer + 1.0);
+
+                    if (emissive == 0.0)
+                    emissive = (sample.a * sample.a) * 0.0125;
+                }
+                surfaceInfo.emissive = emissive;
+                surfaceInfo.color.rgb = portalColour;
+                surfaceInfo.metalness = 1.0;
+                surfaceInfo.roughness = 1.0;
+                surfaceInfo.subsurface = 0.0;
+            }
+
+            
+            if ( (pbr.flags & (kPBRTextureDataFlagHasNormalTexture | kPBRTextureDataFlagHasHeightMapTexture | kPBRTextureDataFlagHasPackedHeightNormalsTexture)))
             {
                 float2 normalUV = uv * pbr.colourToNormalUvScale + pbr.colourToNormalUvBias;
 
@@ -569,78 +647,78 @@
                     //texNormal.xy = lerp(texNormal.xy, texNormal.xy * 0.5, 0.5);
                 }
                 else {
-                bool isPackedHeightmap = pbr.flags & kPBRTextureDataFlagHasPackedHeightNormalsTexture;
-                float4 pixelEgdeNormals;
+                    bool isPackedHeightmap = pbr.flags & kPBRTextureDataFlagHasPackedHeightNormalsTexture;
+                    float4 pixelEgdeNormals;
 
-                if (isPackedHeightmap) {
-                    pixelEgdeNormals = colorTex.SampleLevel(pointSampler, normalUV, 0);
+                    if (isPackedHeightmap) {
+                        pixelEgdeNormals = colorTex.SampleLevel(pointSampler, normalUV, 0);
 
-                    #if 1
-                    // Workaround for a bug where heightmaps of flipbook terrain textures
-                    // are incorrectly classified as packed heightmaps instead of regular ones.
-                    // Consider this a traditional heightmap when all 3 rgb channels are equal and
-                    // when alpha is either 0, 1 or equal to red.
-                    isPackedHeightmap = (
-                        (
+                        #if 1
+                            // Workaround for a bug where heightmaps of flipbook terrain textures
+                            // are incorrectly classified as packed heightmaps instead of regular ones.
+                            // Consider this a traditional heightmap when all 3 rgb channels are equal and
+                            // when alpha is either 0, 1 or equal to red.
+                            isPackedHeightmap = (
+                            (
                             pixelEgdeNormals.a != pixelEgdeNormals.r && 
                             abs(pixelEgdeNormals.a - 0.5) < (0.5 - 0.5/255.0) // Equivalent to: pixelEgdeNormals.a != 0 && pixelEgdeNormals.a != 1
-                        ) || 
-                        pixelEgdeNormals.r != pixelEgdeNormals.g ||
-                        pixelEgdeNormals.g != pixelEgdeNormals.b
-                    );
-                    #endif
-                }
-
-                if (isPackedHeightmap)
-                {
-                    // This code is based on the Vibrant Visuals implementation of heightmaps, with packed egde normals.
-
-                    // g_view.heightMapPixelEdgeWidth = 1/12
-                    // g_view.recipHeightMapDepth = 1/4
-                    const float kHeightMapFlattenEpsilon = 0.005;
-                    float2 widthHeight;
-                    colorTex.GetDimensions(widthHeight.x, widthHeight.y);
-                    float2 nudgeSampleCoord = frac(normalUV * widthHeight);
-                    pixelEgdeNormals = 2.0 * pixelEgdeNormals - 1.0;
-                    texNormal.xy = pixelEgdeNormals.yz * step(1.0 - g_view.heightMapPixelEdgeWidth, nudgeSampleCoord) - pixelEgdeNormals.wx * step(nudgeSampleCoord, g_view.heightMapPixelEdgeWidth);
-                    texNormal.xy *= step(kHeightMapFlattenEpsilon, abs(texNormal.xy));
-                    texNormal.z = g_view.recipHeightMapDepth;
-                }
-                else
-                {
-                    // This code is based on the Vibrant Visuals implementation of traditional grayscale heightmaps.
-                    
-                    float2 widthHeight;
-                    colorTex.GetDimensions(widthHeight.x, widthHeight.y);
-                    float2 pixelCoord = normalUV * widthHeight;
-                    {
-                        const float kNudgePixelCentreDistEpsilon = 0.0625;
-                        const float kNudgeUvEpsilon = 0.25 / 65536.;
-                        float2 nudgeSampleCoord = frac(pixelCoord);
-                        if (abs(nudgeSampleCoord.x - 0.5) < kNudgePixelCentreDistEpsilon)
-                        {
-                            normalUV.x += (nudgeSampleCoord.x > 0.5f) ? kNudgeUvEpsilon : -kNudgeUvEpsilon;
-                        }
-                        if (abs(nudgeSampleCoord.y - 0.5) < kNudgePixelCentreDistEpsilon)
-                        {
-                            normalUV.y += (nudgeSampleCoord.y > 0.5f) ? kNudgeUvEpsilon : -kNudgeUvEpsilon;
-                        }
+                            ) || 
+                            pixelEgdeNormals.r != pixelEgdeNormals.g ||
+                            pixelEgdeNormals.g != pixelEgdeNormals.b
+                            );
+                        #endif
                     }
-                    float4 heightSamples = colorTex.Gather(pointSampler, normalUV, 0);
-                    float2 subPixelCoord = frac(pixelCoord + 0.5);
-                    const float kBevelMode = 0.0;
-                    float2 axisSamplePair = (subPixelCoord.y > 0.5) ? heightSamples.xy : heightSamples.wz;
-                    float axisBevelCentreSampleCoord = subPixelCoord.x;
-                    axisBevelCentreSampleCoord += ((axisSamplePair.x > axisSamplePair.y) ? g_view.heightMapPixelEdgeWidth : -g_view.heightMapPixelEdgeWidth) * kBevelMode;
-                    int2 axisSampleIndices = int2(clamp(float2(axisBevelCentreSampleCoord - g_view.heightMapPixelEdgeWidth, axisBevelCentreSampleCoord + g_view.heightMapPixelEdgeWidth) * 2.f, 0.0, 1.0));
-                    texNormal.x = (axisSamplePair[axisSampleIndices.x] - axisSamplePair[axisSampleIndices.y]);
-                    axisSamplePair = (subPixelCoord.x > 0.5f) ? heightSamples.zy : heightSamples.wx;
-                    axisBevelCentreSampleCoord = subPixelCoord.y;
-                    axisBevelCentreSampleCoord += ((axisSamplePair.x > axisSamplePair.y) ? g_view.heightMapPixelEdgeWidth : -g_view.heightMapPixelEdgeWidth) * kBevelMode;
-                    axisSampleIndices = int2(clamp(float2(axisBevelCentreSampleCoord - g_view.heightMapPixelEdgeWidth, axisBevelCentreSampleCoord + g_view.heightMapPixelEdgeWidth) * 2.f, 0.0, 1.0));
-                    texNormal.y = (axisSamplePair[axisSampleIndices.x] - axisSamplePair[axisSampleIndices.y]);
-                    texNormal.z = g_view.recipHeightMapDepth;
-                }
+
+                    if (isPackedHeightmap)
+                    {
+                        // This code is based on the Vibrant Visuals implementation of heightmaps, with packed egde normals.
+
+                        // g_view.heightMapPixelEdgeWidth = 1/12
+                        // g_view.recipHeightMapDepth = 1/4
+                        const float kHeightMapFlattenEpsilon = 0.005;
+                        float2 widthHeight;
+                        colorTex.GetDimensions(widthHeight.x, widthHeight.y);
+                        float2 nudgeSampleCoord = frac(normalUV * widthHeight);
+                        pixelEgdeNormals = 2.0 * pixelEgdeNormals - 1.0;
+                        texNormal.xy = pixelEgdeNormals.yz * step(1.0 - g_view.heightMapPixelEdgeWidth, nudgeSampleCoord) - pixelEgdeNormals.wx * step(nudgeSampleCoord, g_view.heightMapPixelEdgeWidth);
+                        texNormal.xy *= step(kHeightMapFlattenEpsilon, abs(texNormal.xy));
+                        texNormal.z = g_view.recipHeightMapDepth;
+                    }
+                    else
+                    {
+                        // This code is based on the Vibrant Visuals implementation of traditional grayscale heightmaps.
+                        
+                        float2 widthHeight;
+                        colorTex.GetDimensions(widthHeight.x, widthHeight.y);
+                        float2 pixelCoord = normalUV * widthHeight;
+                        {
+                            const float kNudgePixelCentreDistEpsilon = 0.0625;
+                            const float kNudgeUvEpsilon = 0.25 / 65536.;
+                            float2 nudgeSampleCoord = frac(pixelCoord);
+                            if (abs(nudgeSampleCoord.x - 0.5) < kNudgePixelCentreDistEpsilon)
+                            {
+                                normalUV.x += (nudgeSampleCoord.x > 0.5f) ? kNudgeUvEpsilon : -kNudgeUvEpsilon;
+                            }
+                            if (abs(nudgeSampleCoord.y - 0.5) < kNudgePixelCentreDistEpsilon)
+                            {
+                                normalUV.y += (nudgeSampleCoord.y > 0.5f) ? kNudgeUvEpsilon : -kNudgeUvEpsilon;
+                            }
+                        }
+                        float4 heightSamples = colorTex.Gather(pointSampler, normalUV, 0);
+                        float2 subPixelCoord = frac(pixelCoord + 0.5);
+                        const float kBevelMode = 0.0;
+                        float2 axisSamplePair = (subPixelCoord.y > 0.5) ? heightSamples.xy : heightSamples.wz;
+                        float axisBevelCentreSampleCoord = subPixelCoord.x;
+                        axisBevelCentreSampleCoord += ((axisSamplePair.x > axisSamplePair.y) ? g_view.heightMapPixelEdgeWidth : -g_view.heightMapPixelEdgeWidth) * kBevelMode;
+                        int2 axisSampleIndices = int2(clamp(float2(axisBevelCentreSampleCoord - g_view.heightMapPixelEdgeWidth, axisBevelCentreSampleCoord + g_view.heightMapPixelEdgeWidth) * 2.f, 0.0, 1.0));
+                        texNormal.x = (axisSamplePair[axisSampleIndices.x] - axisSamplePair[axisSampleIndices.y]);
+                        axisSamplePair = (subPixelCoord.x > 0.5f) ? heightSamples.zy : heightSamples.wx;
+                        axisBevelCentreSampleCoord = subPixelCoord.y;
+                        axisBevelCentreSampleCoord += ((axisSamplePair.x > axisSamplePair.y) ? g_view.heightMapPixelEdgeWidth : -g_view.heightMapPixelEdgeWidth) * kBevelMode;
+                        axisSampleIndices = int2(clamp(float2(axisBevelCentreSampleCoord - g_view.heightMapPixelEdgeWidth, axisBevelCentreSampleCoord + g_view.heightMapPixelEdgeWidth) * 2.f, 0.0, 1.0));
+                        texNormal.y = (axisSamplePair[axisSampleIndices.x] - axisSamplePair[axisSampleIndices.y]);
+                        texNormal.z = g_view.recipHeightMapDepth;
+                    }
                 }
                 // TODO: in the future make normal computations relative to vertex normal (doesn't make sense to do it now since entities have no PBR textures and blocks have no vertex normals).
                 
@@ -655,9 +733,11 @@
         // Invert back facing normals.
         //if (!hitInfo.frontFacing) surfaceInfo.normal = -surfaceInfo.normal;
         // small albedo reduction to avoid overly bright surfaces
-        surfaceInfo.color = color.rgb;
-        
-        surfaceInfo.color = SRGBToLinear(surfaceInfo.color);
+        if (!isEndPortal(objectInstance))
+        {
+            surfaceInfo.color = color.rgb;
+            surfaceInfo.color = SRGBToLinear(surfaceInfo.color);
+        }
         #if WHITE_FURNACE == 1
             surfaceInfo.color = 1.0.xxx;
             //surfaceInfo.roughness = 0.86;
