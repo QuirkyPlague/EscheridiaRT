@@ -185,8 +185,8 @@
             geometryInfo.bitangent = dUV1.x * dPos2 - dUV2.x * dPos1;
         }
         // Tip: tangent and bitangent can be pre-calculated from CalculateFaceData pass and stored in faceDataBuffers.
-        geometryInfo.tangent = normalize(geometryInfo.tangent);
-        geometryInfo.bitangent = normalize(geometryInfo.bitangent);
+        geometryInfo.tangent = safeNormalize(geometryInfo.tangent, float3(1, 0, 0));
+        geometryInfo.bitangent = safeNormalize(geometryInfo.bitangent, float3(0, 1, 0));
 
         // get the worldspace geometry normal from the model normal
         geometryInfo.geometryNormal = normalize(mul(geometryInfo.modelNormal,(float3x3)objectInstance.modelToWorld));
@@ -388,7 +388,7 @@
 
         uint normalByteOffset = objectInstance.offsetPack1 >> 8;
         float3 modelSpaceNormal = normalByteOffset ? geometryInfo.vertexNormal : geometryInfo.modelNormal;
-        surfaceInfo.normal = normalize(mul(modelSpaceNormal, (float3x3)objectInstance.modelToWorld));
+        surfaceInfo.normal = safeNormalize(mul(modelSpaceNormal, (float3x3)objectInstance.modelToWorld), geometryInfo.modelNormal);
 
         surfaceInfo.position = mul(float4(geometryInfo.position, 1), objectInstance.modelToWorld);
         surfaceInfo.prevPosition = mul(float4((objectInstance.flags & kObjectInstanceFlagHasMotionVectors) ? geometryInfo.previousPosition : geometryInfo.position, 1), objectInstance.prevModelToWorld);
@@ -441,6 +441,11 @@
             vertColor.rgb = lerp(vertColor.rgb, 1.xxx, color.a);
         }
 
+        // Filled maps in first person or in item frames should also be treated as having 0.5 treshold, so we check for them here, with `!objectInstance.flags`.
+        surfaceInfo.shouldDiscard = hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST 
+        && (objectInstance.flags & (kObjectInstanceFlagAlphaTestThresholdHalf | kObjectInstanceFlagChunk) || !objectInstance.flags ? color.a < 0.5 : color.a == 0.0);
+        
+
         if (objectInstance.flags & kObjectInstanceFlagRemapTransparencyAlpha)
         {
             color.a = saturatedLinearRemapZeroToOne(color.a, 0.5, 1.0f);
@@ -490,20 +495,20 @@
             EvaluateActorMaterial(objectInstance, hitInfo, uv, tintColor0, tintColor1, color, surfaceInfo.shouldDiscard);
         }
         float emissive = 0.0;
-              // Filter for entity_alphatest materials
-		if (!(objectInstance.flags & kObjectInstanceFlagChunk) &&
-			objectInstance.objectCategory != MATERIAL_TYPE_ALPHA_BLEND &&
-			!(objectInstance.flags & kObjectInstanceFlagMultiplicativeTint) &&
-			color.a > 0.02)
-		{
-			// Inverse relationship with alpha to match vanilla renderer behaviour
+        // Filter for entity_alphatest materials
+        if (!(objectInstance.flags & kObjectInstanceFlagChunk) &&
+        objectInstance.objectCategory != MATERIAL_TYPE_ALPHA_BLEND &&
+        !(objectInstance.flags & kObjectInstanceFlagMultiplicativeTint) &&
+        color.a > 0.02)
+        {
+            // Inverse relationship with alpha to match vanilla renderer behaviour
             float entityEmissive = 1 - color.a;
             if (objectInstance.flags & kObjectInstanceFlagUsesOverlayColor) {
                 float4 overlayColour = tintColor1;
                 entityEmissive *= lerp(1.0, luminance(overlayColour.rgb), overlayColour.a);
             }
-			surfaceInfo.emissive = mad(entityEmissive, entityEmissive, emissive); // Gamma 2 conversion from previous code
-		}
+            surfaceInfo.emissive = mad(entityEmissive, entityEmissive, emissive); // Gamma 2 conversion from previous code
+        }
 
         // applyActorDiffuse()
         // applyOverlayColor()
@@ -524,7 +529,7 @@
             // TODO: should we also check for `pbr.flags != kInvalidPBRTextureHandle` ?
             float4 mers = float4(pbr.uniformMetalness, pbr.uniformEmissive, pbr.uniformRoughness, pbr.uniformSubsurface);
 
-          
+            
 
             if (pbr.flags & kPBRTextureDataFlagHasMaterialTexture)
             {
@@ -543,12 +548,15 @@
             surfaceInfo.subsurface = mers.a;
             surfaceInfo.subsurface = mers.r > mers.a ? 0.0 : mers.a;
 
-            if (pbr.flags & (kPBRTextureDataFlagHasNormalTexture | kPBRTextureDataFlagHasHeightMapTexture | kPBRTextureDataFlagHasPackedHeightNormalsTexture))
+            // Skip PBR normal calculations for block breaking overlays to avoid NaN issues with degenerate geometry
+            const bool isBlockBreakingOverlay = objectInstance.flags == (kObjectInstanceFlagAlphaTestThresholdHalf | kObjectInstanceFlagTextureAlphaControlsVertexColor);
+            
+            if (!isBlockBreakingOverlay && (pbr.flags & (kPBRTextureDataFlagHasNormalTexture | kPBRTextureDataFlagHasHeightMapTexture | kPBRTextureDataFlagHasPackedHeightNormalsTexture)))
             {
                 float2 normalUV = uv * pbr.colourToNormalUvScale + pbr.colourToNormalUvBias;
 
-                float3 tangent = normalize(mul(geometryInfo.tangent, (float3x3)objectInstance.modelToWorld));
-                float3 bitangent = normalize(mul(geometryInfo.bitangent, (float3x3)objectInstance.modelToWorld));
+                float3 tangent = safeNormalize(mul(geometryInfo.tangent, (float3x3)objectInstance.modelToWorld), float3(1, 0, 0));
+                float3 bitangent = safeNormalize(mul(geometryInfo.bitangent, (float3x3)objectInstance.modelToWorld), float3(0, 1, 0));
 
                 float3 texNormal = float3(0, 0, 1);
                 if (pbr.flags & kPBRTextureDataFlagHasNormalTexture)
@@ -558,15 +566,36 @@
                     texNormal = float3(texel, sqrt(max(0, 1 - texel.x * texel.x - texel.y * texel.y)));
                     //texNormal.xy = lerp(texNormal.xy, texNormal.xy * 0.5, 0.5);
                 }
-                else if (pbr.flags & kPBRTextureDataFlagHasPackedHeightNormalsTexture)
+                else {
+                bool isPackedHeightmap = pbr.flags & kPBRTextureDataFlagHasPackedHeightNormalsTexture;
+                float4 pixelEgdeNormals;
+
+                if (isPackedHeightmap) {
+                    pixelEgdeNormals = colorTex.SampleLevel(pointSampler, normalUV, 0);
+
+                    #if 1
+                    // Workaround for a bug where heightmaps of flipbook terrain textures
+                    // are incorrectly classified as packed heightmaps instead of regular ones.
+                    // Consider this a traditional heightmap when all 3 rgb channels are equal and
+                    // when alpha is either 0, 1 or equal to red.
+                    isPackedHeightmap = (
+                        (
+                            pixelEgdeNormals.a != pixelEgdeNormals.r && 
+                            abs(pixelEgdeNormals.a - 0.5) < (0.5 - 0.5/255.0) // Equivalent to: pixelEgdeNormals.a != 0 && pixelEgdeNormals.a != 1
+                        ) || 
+                        pixelEgdeNormals.r != pixelEgdeNormals.g ||
+                        pixelEgdeNormals.g != pixelEgdeNormals.b
+                    );
+                    #endif
+                }
+
+                if (isPackedHeightmap)
                 {
                     // This code is based on the Vibrant Visuals implementation of heightmaps, with packed egde normals.
 
                     // g_view.heightMapPixelEdgeWidth = 1/12
                     // g_view.recipHeightMapDepth = 1/4
                     const float kHeightMapFlattenEpsilon = 0.005;
-
-                    float4 pixelEgdeNormals = colorTex.SampleLevel(pointSampler, normalUV, 0);
                     float2 widthHeight;
                     colorTex.GetDimensions(widthHeight.x, widthHeight.y);
                     float2 nudgeSampleCoord = frac(normalUV * widthHeight);
@@ -574,7 +603,6 @@
                     texNormal.xy = pixelEgdeNormals.yz * step(1.0 - g_view.heightMapPixelEdgeWidth, nudgeSampleCoord) - pixelEgdeNormals.wx * step(nudgeSampleCoord, g_view.heightMapPixelEdgeWidth);
                     texNormal.xy *= step(kHeightMapFlattenEpsilon, abs(texNormal.xy));
                     texNormal.z = g_view.recipHeightMapDepth;
-                    texNormal = normalize(texNormal);
                 }
                 else
                 {
@@ -610,13 +638,13 @@
                     axisSampleIndices = int2(clamp(float2(axisBevelCentreSampleCoord - g_view.heightMapPixelEdgeWidth, axisBevelCentreSampleCoord + g_view.heightMapPixelEdgeWidth) * 2.f, 0.0, 1.0));
                     texNormal.y = (axisSamplePair[axisSampleIndices.x] - axisSamplePair[axisSampleIndices.y]);
                     texNormal.z = g_view.recipHeightMapDepth;
-                    texNormal = normalize(texNormal);
+                }
                 }
                 // TODO: in the future make normal computations relative to vertex normal (doesn't make sense to do it now since entities have no PBR textures and blocks have no vertex normals).
                 
                 
 
-                surfaceInfo.normal =normalize(mul(texNormal,float3x3(tangent,bitangent,geometryInfo.geometryNormal)));
+                surfaceInfo.normal = safeNormalize(mul(texNormal,float3x3(tangent,bitangent,geometryInfo.geometryNormal)), geometryInfo.geometryNormal);
                 
                 
             }
@@ -730,20 +758,20 @@
                     GerstnerSample previousWave = SampleGerstner(previousXZ, previousFrame.x * 0.85f);
                     float2 previousPosXZ = surface.prevPosition.xz + (displacedPos.xz - flatPos.xz);
                     float previousFade = 1.0f - smoothstep(WAVE_FADE_START, WAVE_FADE_END,
-                        length(surface.prevPosition.xz - g_view.previousViewOriginSteveSpace.xz));
+                    length(surface.prevPosition.xz - g_view.previousViewOriginSteveSpace.xz));
 
                     // Track a Gerstner material point; multiple wave directions cannot
                     // be represented exactly by a single motion vector.
                     float2 horizontalMotion = currentWave.horizontalOffset * waveFade -
-                        previousWave.horizontalOffset * previousFade;
+                    previousWave.horizontalOffset * previousFade;
                     previousXZ -= horizontalMotion;
                     previousWave = SampleGerstner(previousXZ, previousFrame.x * 0.85f);
                     previousPosXZ -= horizontalMotion;
                     surface.prevPosition.xz = previousPosXZ;
                     surface.prevPosition.y += (displacedPos.y - flatPos.y) +
-                        previousWave.height * previousFade - currentWave.height * waveFade;
+                    previousWave.height * previousFade - currentWave.height * waveFade;
                 }
-              
+                
             #else
                 float3 worldPos = surface.position - g_view.waveWorksOriginInSteveSpace;
                 worldPos = worldPos - floor(worldPos / 1024.0) * 1024.0;
@@ -766,9 +794,9 @@
             roughness = lerp(0.235, roughness, waveFade);
             */
 
-           
             
-        
+            
+            
             surface.roughness = roughness;
             surface.metalness = metalness;
             surface.alpha = alpha;

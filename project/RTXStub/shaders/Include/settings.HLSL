@@ -7,13 +7,13 @@
 // 1 = EON
 // 2 = Hammon diffuse
 
-#define DIFFUSE_METHOD 1
+#define DIFFUSE_METHOD 0
 
 #define USE_SPECTRAL 0
 
 #define DO_SAMPLE_LIMITS 0
 #define MAX_ACCUMULATED_SAMPLES 256
-#define MAX_BOUNCES 8
+#define MAX_BOUNCES 4
 
 // White furnace test
 #define WHITE_FURNACE 0
@@ -94,9 +94,9 @@
 
 #define POINT_LIGHT_SHADOW_SAMPLES 1
 #define POINT_LIGHT_SHADOW_RADIUS 0.0325
-#define EMISSION_STENGTH  4.5
+#define EMISSION_STENGTH  5.5
 
-#define POINT_LIGHT_INTENSITY 30.0
+#define POINT_LIGHT_INTENSITY 65.0
 // Integer distances in blocks: inverse-square falloff is unchanged until the fade starts.
 #define POINT_LIGHT_FADE_START 32
 #define POINT_LIGHT_FADE_END 64
@@ -179,6 +179,10 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 
 #define FOG_FADE_START 32
 #define FOG_FADE_END 286
+
+// Set to 1 to disable indirect fog scattering (fog bounces), keeping only direct fog scattering
+#define DISABLE_INDIRECT_FOG_SCATTERING 0
+
 //sky intensity multipliers
 #define RAYLEIGH_MULT                  1.0 //brightness of the sky
 #define SKY_MIE_SCATTERING_STRENGTH    0.15   // atmospheric Mie brightness multiplier
@@ -316,7 +320,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 // rough surface seen in the reflection or under the water, so RR keeps that image sharp (up to three
 // extra rays per mirror-like pixel, about 3-4 % FPS on an RTX 3050).
 // 0 = guides of the mirror surface itself.
-#define RR_PSR 1
+#define RR_PSR 0
 
 // Glossy surfaces in RR mode: the specular hit distance follows mirror-like bounces up to the first
 // rough surface instead of ending after the first bounce.
@@ -332,7 +336,7 @@ static const bool useFastBRDFApprox =  USE_ACCURATE_DIFFUSE_BRDF;
 // 2026-11 driver's RR model the picture did not change at all, not even with the distance forced to 0
 // or to "far" everywhere. Needs RTXBoost 1.5.0 or newer; older versions ignore it.
 // 0 = specular hit distance only.
-#define RR_DIFFUSE_HITDIST 0
+#define RR_DIFFUSE_HITDIST 1
 
 
 

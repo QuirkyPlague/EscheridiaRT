@@ -16,7 +16,8 @@
         float3 caustics1 = causticsTexture.SampleLevel(linearWrapSampler, float3(causticsUV, layer0), 0);
         float3 caustics2 = causticsTexture.SampleLevel(linearWrapSampler, float3(causticsUV, layer1), 0);
         float3 caustics = lerp(caustics1, caustics2, layerBlend) * 7;
-        caustics = lerp(1, caustics, exp2(-hitDist * 0.001));
+      
+        caustics = lerp(1, caustics, exp2(-hitDist * 1e-6));
         return caustics;
     }
     
