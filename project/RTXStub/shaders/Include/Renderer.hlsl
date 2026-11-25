@@ -472,6 +472,10 @@
             ? max((1.0f - specularProbability) * surfaceInfo.alpha, 1e-4)
             : diffuseEnergyScale;
 
+        
+            
+
+
             // block overlay needs to be handled separately
             // ray color and radiance must be computed separately along with the motion data
             if(isBlockBreakingOverlay)
@@ -853,6 +857,7 @@
             while (q.Proceed())
             {
                 HitInfo hitInfo = GetCandidateHitInfo(q);
+                
                 if (AlphaTestHitLogic(hitInfo))
                 {
                     q.CommitNonOpaqueTriangleHit();

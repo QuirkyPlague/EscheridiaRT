@@ -413,6 +413,7 @@
             }
             color = colorTex.SampleLevel(pointSampler, uv, 0);
         }
+        bool discardAlphaBlend = hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && color.a == 0.0;
         
         // For some reason terrain is not treated as having 0.5 threshold so we have to also explicitly test for it, hence the `kObjectInstanceFlagChunk` part in below code.
         surfaceInfo.shouldDiscard = hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST 
@@ -445,7 +446,6 @@
         surfaceInfo.shouldDiscard = hitInfo.materialType == MATERIAL_TYPE_ALPHA_TEST 
         && (objectInstance.flags & (kObjectInstanceFlagAlphaTestThresholdHalf | kObjectInstanceFlagChunk) || !objectInstance.flags ? color.a < 0.5 : color.a == 0.0);
         
-
         if (objectInstance.flags & kObjectInstanceFlagRemapTransparencyAlpha)
         {
             color.a = saturatedLinearRemapZeroToOne(color.a, 0.5, 1.0f);
@@ -494,6 +494,8 @@
         if (isActor) {
             EvaluateActorMaterial(objectInstance, hitInfo, uv, tintColor0, tintColor1, color, surfaceInfo.shouldDiscard);
         }
+        if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND)
+            surfaceInfo.shouldDiscard = discardAlphaBlend;
         float emissive = 0.0;
         // Filter for entity_alphatest materials
         if (!(objectInstance.flags & kObjectInstanceFlagChunk) &&

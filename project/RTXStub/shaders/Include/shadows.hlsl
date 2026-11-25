@@ -21,9 +21,10 @@
             if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND && !hitInfo.frontFacing)
             return false;
         #endif
-        // If this logic runs for non-alphatested things, always register a hit.
-        if (hitInfo.materialType != MATERIAL_TYPE_ALPHA_TEST)
-        return true;
+    
+
+        if (hitInfo.materialType != MATERIAL_TYPE_ALPHA_TEST && hitInfo.materialType != MATERIAL_TYPE_ALPHA_BLEND)
+            return true;
 
         // Tip: instead of calculating material every time, you can calculate UVs during CalculateFaceData pass and cache them in faceUvBuffers.
         // Then during alpha testing, cached UVs can be used to sample texture(s) instead of using expensive material and geometry computations.
@@ -59,6 +60,18 @@
                 
                 bool isCloud = object.flags & kObjectInstanceFlagClouds; 
                 
+                if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) {
+                    GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
+                    SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
+                    if (!surfaceInfo.shouldDiscard) {
+                        if (isCloud)
+                            transmission *= saturate(1.0f - CLOUD_SHADOW_OPACITY);
+                        else
+                            transmission *= lerp(surfaceInfo.color, 0.0, surfaceInfo.alpha);
+                    }
+                    continue;
+                }
+
                 if (isCloud) { 
                     // Simple cloud shadow approximation
                     transmission *= saturate(1.0f - CLOUD_SHADOW_OPACITY); 
@@ -71,14 +84,6 @@
                         q.CommitNonOpaqueTriangleHit(); 
                     } 
 
-                } 
-                else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) { 
-                    GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
-                    SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object); 
-                    
-
-                    transmission *= lerp(surfaceInfo.color, 0.0, surfaceInfo.alpha);
-                    continue; 
                 } 
                 else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
                     GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
@@ -125,6 +130,18 @@
                     ObjectInstance object = objectInstances[hitInfo.objectInstanceIndex];
 
                     bool isCloud = object.flags & kObjectInstanceFlagClouds;
+                    if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) {
+                        GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object);
+                        SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object);
+                        if (!surfaceInfo.shouldDiscard) {
+                            if (isCloud)
+                                transmission *= saturate(1.0f - CLOUD_SHADOW_OPACITY);
+                            else
+                                transmission *= GetAlphaBlendTransmissionTint(surfaceInfo.color);
+                        }
+                        continue;
+                    }
+
                     if (isCloud) {
                         transmission *= saturate(1.0f - CLOUD_SHADOW_OPACITY);
                         continue;
@@ -134,15 +151,6 @@
                         if (AlphaTestHitLogic(hitInfo)) {
                             q.CommitNonOpaqueTriangleHit();
                         }
-                    }
-                    else if (hitInfo.materialType == MATERIAL_TYPE_ALPHA_BLEND) { 
-                        GeometryInfo geometryInfo = GetGeometryInfo(hitInfo, object); 
-                        SurfaceInfo surfaceInfo = MaterialVanilla(hitInfo, geometryInfo, object); 
-                        
-                        // Attenuate light passing through transmissive alpha-blended surface (dielectric transmission tint)
-                        transmission *= GetAlphaBlendTransmissionTint(surfaceInfo.color); 
-                        
-                        continue; 
                     }
                     else if (hitInfo.materialType == MATERIAL_TYPE_WATER) {
                         float3 waterExtinction = calcTransmittance(q.CandidateTriangleRayT(), getMediaExtinction(MEDIA_TYPE_WATER).rgb);
